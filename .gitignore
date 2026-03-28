@@ -1,0 +1,22 @@
+# Generated outputs
+*.pdf
+*.png
+
+# Tile assets (large binary files, not tracked)
+dungeon-generator/tiles/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Local IDE / editor config
+settings.local.json
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

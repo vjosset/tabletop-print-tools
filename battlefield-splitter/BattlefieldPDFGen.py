@@ -1,11 +1,26 @@
-import os
+#!/usr/bin/env python3
+"""
+Split a high-resolution image into square tiles and export as a multi-page PDF.
+Each tile is printed on its own page at exactly 20×20 cm.
+
+Usage:
+    python BattlefieldPDFGen.py input.jpg --tiles 3x2
+    python BattlefieldPDFGen.py map.png --tiles 3x3 --paper a4 --instructions
+
+Requires: pillow reportlab
+    pip install pillow reportlab
+"""
 import io
 import argparse
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
+from utils import mm_to_pt, get_page_size
+
 from PIL import Image, ImageDraw, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.units import cm
 from reportlab.lib.utils import ImageReader
 
@@ -13,280 +28,197 @@ from reportlab.lib.utils import ImageReader
 JPEG_QUALITY = 100
 MIN_TILE_SIZE = 1024
 
-# --- Argument Parsing ---
-parser = argparse.ArgumentParser(description="Split an image into tiles with 5x5 grid and export as 20x20cm PDFs.")
-parser.add_argument("input_image", help="Path to the input image")
-parser.add_argument(
-  "--tiles", default="1x1", help="Tiles for the image split, format: COLSxROWS (e.g. 3x2)")
-parser.add_argument(
-  "--grid-color", default="#c54c21",
-  help="Hex color for the grid lines (default: orange #c54c21)"
-)
-parser.add_argument(
-  "--grid-width-mm", type=int, default=1,
-  help="Width of grid lines in millimeters (default: 1)"
-)
-parser.add_argument(
-  "--upscale", type=int, default=1,
-  help="Auto-upscale image to MIN_TILE_SIZE * COLS x MIN_TILE_SIZE * ROWS before processing (default: 1, upscale)"
-)
-parser.add_argument(
-  "--instructions", type=int, default=0,
-  help="Include instructions page with a thumbnail of the original image (default: 0, no instructions)"
-)
-parser.add_argument(
-  "--page_size", default="US Letter",
-  help="the page size for the PDF output (default: 'US Letter', also supports 'A4'). "
-)
-args = parser.parse_args()
 
-input_path = Path(args.input_image).resolve()
+def parse_tiles(value: str, ap: argparse.ArgumentParser) -> tuple[int, int]:
+    """Parse a 'COLSxROWS' string and return (cols, rows), or exit on bad input."""
+    try:
+        cols, rows = map(int, value.lower().split("x"))
+        if cols < 1 or rows < 1:
+            raise ValueError
+    except ValueError:
+        ap.error(f"Invalid --tiles value {value!r}. Use format like 3x2 or 1x1.")
+    return cols, rows
 
-if args.page_size.lower() == "a4":
-  page_size = A4
-  page_size_name = "A4"
-else:
-  page_size = letter 
-  page_size_name = "Letter"
 
-# --- Parse Grid Size ---
-try:
-  cols, rows = map(int, args.tiles.lower().split("x"))
-  if cols < 1 or rows < 1:
-    raise ValueError
-except ValueError:
-  raise SystemExit("❌ Invalid --grid value. Use format like 3x2 or 1x1")
+def main() -> None:
+    ap = argparse.ArgumentParser(
+        description="Split an image into tiles and export as a multi-page PDF (20×20 cm per tile)."
+    )
+    ap.add_argument("input_image", help="Path to the input image (JPG or PNG).")
+    ap.add_argument(
+        "--tiles", default="1x1",
+        help="Tile grid layout in COLSxROWS format, e.g. 3x2 (default: 1x1)."
+    )
+    ap.add_argument(
+        "--paper", choices=["letter", "a4"], default="letter",
+        help="Paper size (default: letter)."
+    )
+    ap.add_argument(
+        "--grid-color", default="#c54c21",
+        help="Hex color for the alignment crosshair marks (default: #c54c21)."
+    )
+    ap.add_argument(
+        "--grid-width-mm", type=int, default=1,
+        help="Width of crosshair lines in millimeters (default: 1)."
+    )
+    ap.add_argument(
+        "--upscale", action="store_true",
+        help="Upscale the image to meet minimum tile resolution before processing."
+    )
+    ap.add_argument(
+        "--instructions", action="store_true",
+        help="Append an instructions page with a layout preview to the PDF."
+    )
+    args = ap.parse_args()
 
-# --- Load Image ---
-image = Image.open(input_path).convert("RGB")
-width, height = image.size
-tile_width = width // cols
-tile_height = height // rows
+    input_path = Path(args.input_image).resolve()
+    if not input_path.is_file():
+        ap.error(f"Input image not found: {input_path}")
 
-# Upscale to MIN_TILE_SIZE * cols x MIN_TILE_SIZE * rows before any other manipulation
-if args.upscale > 0:
-  target_size = (MIN_TILE_SIZE * cols, MIN_TILE_SIZE * rows)
-  if target_size[0] > width or target_size[1] > height:
-    scale_w = target_size[0] / width
-    scale_h = target_size[1] / height
-    scale = max(scale_w, scale_h)  # Use the larger scale to ensure both dimensions meet minimums
+    cols, rows = parse_tiles(args.tiles, ap)
 
-    new_width = int(width * scale)
-    new_height = int(height * scale)
+    page_size = get_page_size(args.paper)
+    paper_label = "A4" if args.paper == "a4" else "Letter"
 
-    print(f"⚠️ Upscaling image from {width}x{height} to {new_width}x{new_height}")
-    image = image.resize((new_width, new_height), Image.LANCZOS)
-
+    # --- Load Image ---
+    image = Image.open(input_path).convert("RGB")
     width, height = image.size
-    tile_width = width // cols
-    tile_height = height // rows
 
-# --- PDF Layout Constants ---
-img_size = 20 * cm
-page_width, page_height = page_size
-x_offset = (page_width - img_size) / 2
-y_offset = (page_height - img_size) / 2
+    # Upscale to MIN_TILE_SIZE * cols x MIN_TILE_SIZE * rows before any other manipulation
+    if args.upscale:
+        target_w = MIN_TILE_SIZE * cols
+        target_h = MIN_TILE_SIZE * rows
+        if target_w > width or target_h > height:
+            scale = max(target_w / width, target_h / height)
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            print(f"⚠️  Upscaling image from {width}x{height} to {new_width}x{new_height}")
+            image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            width, height = image.size
 
-# Prepare the PDF canvas
-output_pdf = input_path.with_name(f"{input_path.stem}_{page_size_name}.pdf")
-c = canvas.Canvas(str(output_pdf), pagesize=page_size)
-c.setTitle(input_path.stem)
+    # --- Center-crop to exact tile grid ---
+    img_w, img_h = image.size
+    tile_size = int(min(img_w / cols, img_h / rows))
+    crop_w = tile_size * cols
+    crop_h = tile_size * rows
+    left   = (img_w - crop_w) // 2
+    top    = (img_h - crop_h) // 2
+    image  = image.crop((left, top, left + crop_w, top + crop_h))
 
-# Get original image size
-img_w, img_h = image.size
-cols, rows = map(int, args.tiles.lower().split("x"))
+    # --- PDF Layout ---
+    img_size  = 20 * cm
+    page_w, page_h = page_size
+    x_offset  = (page_w - img_size) / 2
+    y_offset  = (page_h - img_size) / 2
 
-# Calculate pixel aspect ratio per tile
-aspect_x = img_w / cols
-aspect_y = img_h / rows
+    output_pdf = input_path.with_name(f"{input_path.stem}_{paper_label}.pdf")
+    c = canvas.Canvas(str(output_pdf), pagesize=page_size)
+    c.setTitle(input_path.stem)
 
-# Choose the smaller to preserve square tiles
-tile_size = int(min(aspect_x, aspect_y))
+    # --- Process Each Tile ---
+    for row in range(rows):
+        for col in range(cols):
+            tile = image.crop((
+                col * tile_size,
+                row * tile_size,
+                (col + 1) * tile_size,
+                (row + 1) * tile_size,
+            ))
 
-# Calculate final dimensions to crop to
-crop_w = tile_size * cols
-crop_h = tile_size * rows
+            # Draw 5×5 crosshair grid
+            draw = ImageDraw.Draw(tile)
+            PIXELS_PER_MM = tile.width / 200.0  # 200 mm target print width
+            line_width_px = int(round(args.grid_width_mm * PIXELS_PER_MM))
+            cross_len = line_width_px * 3
+            intersections = 5
 
-# Center crop the image to this new size
-left = (img_w - crop_w) // 2
-top = (img_h - crop_h) // 2
-right = left + crop_w
-bottom = top + crop_h
-image = image.crop((left, top, right, bottom))
+            for i in range(intersections):
+                for j in range(intersections):
+                    x = i * tile_size // (intersections - 1)
+                    y = j * tile_size // (intersections - 1)
+                    # Black shadow stroke
+                    draw.line([(x - cross_len - line_width_px, y), (x + cross_len + line_width_px, y)],
+                              fill="#000000", width=line_width_px * 3)
+                    draw.line([(x, y - cross_len - line_width_px), (x, y + cross_len + line_width_px)],
+                              fill="#000000", width=line_width_px * 3)
+                    # Colored foreground stroke
+                    draw.line([(x - cross_len, y), (x + cross_len, y)],
+                              fill=args.grid_color, width=line_width_px)
+                    draw.line([(x, y - cross_len), (x, y + cross_len)],
+                              fill=args.grid_color, width=line_width_px)
 
-# Save new tile dimensions
-tile_width = tile_size
-tile_height = tile_size
+            # Embed tile in PDF via in-memory JPEG buffer
+            buffer = io.BytesIO()
+            tile.save(buffer, format="JPEG", quality=JPEG_QUALITY, optimize=True)
+            buffer.seek(0)
+            c.drawImage(ImageReader(buffer), x_offset, y_offset, width=img_size, height=img_size)
+            c.showPage()
 
-# --- Process Each Tile ---
-for row in range(rows):
-  for col in range(cols):
-    left = col * tile_width
-    upper = row * tile_height
-    right = left + tile_width
-    lower = upper + tile_height
-    tile = image.crop((left, upper, right, lower))
+    # --- Optional instructions page ---
+    if args.instructions:
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(2 * cm, page_h - 2 * cm, "How to Print and Use")
 
-    # Add this tile
-    draw = ImageDraw.Draw(tile)
+        c.setFont("Helvetica", 11)
+        instructions = [
+            "• Print this PDF at 100% scale (do NOT use 'Fit to page').",
+            "• Each tile prints at 20×20 cm and forms a grid of 4×4 squares, each 50 mm / 2\" to a side.",
+            f"• This layout preview shows how to arrange the {cols}×{rows} tiles.",
+            "• Cut and align the tiles according to the grid.",
+            "• Mount to foam board, wood, or card for maximum durability.",
+        ]
+        y = page_h - 3.2 * cm
+        for line in instructions:
+            c.drawString(2 * cm, y, line)
+            y -= 0.6 * cm
 
-    # Draw 5x5 grid
-    # Get this tile's size (width) in pixels, get its final pixel density, and use that to calculate the line width in pixels
-    tile_pixel_width = tile.width  
-    PIXELS_PER_MM = tile_pixel_width / 200.0  # 200mm target print width
-    line_width_px = int(round(args.grid_width_mm * PIXELS_PER_MM))
-    half_len = line_width_px * 5  # or keep as-is
-    intersections = 5
-    cross_len = line_width_px  * 3
+        # Thumbnail preview
+        DPI_PREVIEW = 118
+        max_px_w = int(10 * DPI_PREVIEW)
+        max_px_h = int(10 * DPI_PREVIEW)
+        img_w, img_h = image.size
+        aspect = img_w / img_h
+        if (max_px_w / max_px_h) > aspect:
+            prev_h = max_px_h
+            prev_w = int(prev_h * aspect)
+        else:
+            prev_w = max_px_w
+            prev_h = int(prev_w / aspect)
 
-    for i in range(intersections):
-      for j in range(intersections):
-        x = i * tile_width // (intersections - 1)
-        y = j * tile_height // (intersections - 1)
+        preview = image.resize((prev_w, prev_h), Image.Resampling.LANCZOS)
+        draw = ImageDraw.Draw(preview)
+        for i in range(1, cols):
+            x = int(i * prev_w / cols)
+            draw.line([(x, 0), (x, prev_h)], fill="white", width=2)
+        for j in range(1, rows):
+            yy = int(j * prev_h / rows)
+            draw.line([(0, yy), (prev_w, yy)], fill="white", width=2)
 
-        # Horizontal line of the "+"
-        draw.line([(x - cross_len - line_width_px, y), (x + cross_len + line_width_px, y)],
-                  fill="#000000", width=line_width_px * 3 )
+        preview_buf = io.BytesIO()
+        preview.save(preview_buf, format="JPEG", quality=JPEG_QUALITY, optimize=True)
+        preview_buf.seek(0)
 
-        # Vertical line of the "+"
-        draw.line([(x, y - cross_len - line_width_px), (x, y + cross_len + line_width_px)],
-                  fill="#000000", width=line_width_px * 3 )
+        prev_aspect = prev_w / prev_h
+        max_cm = 10
+        if prev_aspect >= 1:
+            prev_w_pt = max_cm * cm
+            prev_h_pt = prev_w_pt / prev_aspect
+        else:
+            prev_h_pt = max_cm * cm
+            prev_w_pt = prev_h_pt * prev_aspect
 
-        # Horizontal line of the "+"
-        draw.line([(x - cross_len, y), (x + cross_len, y)],
-                  fill=args.grid_color, width=line_width_px )
+        c.drawImage(
+            ImageReader(preview_buf),
+            (page_w - prev_w_pt) / 2,
+            (page_h - prev_h_pt) / 2,
+            width=prev_w_pt,
+            height=prev_h_pt,
+        )
+        c.showPage()
 
-        # Vertical line of the "+"
-        draw.line([(x, y - cross_len), (x, y + cross_len)],
-                  fill=args.grid_color, width=line_width_px )
-    
-    ## Draw inner grid lines
-    #line_width_px = round(line_width_px / 2)
-    #half_len = round(half_len / 2)
-    #intersections = 6
-    #cross_len = line_width_px  * 2
-    #for i in range(intersections):
-    #  for j in range(intersections):
-    #    x = i * tile_width // (intersections - 1)
-    #    y = j * tile_height // (intersections - 1)
-    #    # Horizontal line of the "+"
-    #    draw.line([(x - cross_len, y), (x + cross_len, y)],
-    #              fill="#000000", width=line_width_px )
-    #    # Vertical line of the "+"
-    #    draw.line([(x, y - cross_len), (x, y + cross_len)],
-    #              fill="#000000", width=line_width_px )
-
-    # Save tile to buffer - Convert to JPEG for PDF embedding and smaller output PDF file size
-    # Note: JPEG is lossy, but we use high quality to minimize artifacts and they are not notticeable in this context
-    buffer = io.BytesIO()
-    tile.save(buffer, format="JPEG", quality=JPEG_QUALITY, optimize=True)
-    buffer.seek(0)
-    tile_reader = ImageReader(buffer)
-
-    # PDF Output
-    tile_name = f"{input_path.stem}_r{row+1}_c{col+1}.pdf"
-    c.drawImage(tile_reader, x_offset, y_offset, width=img_size, height=img_size)
-
-    # Add tile to the PDF on its own page
-    c.showPage()
-
-# --- Append instructions page if requested ---
-if args.instructions > 0:
-  # Draw instructions on final page
-  c.setFont("Helvetica-Bold", 16)
-  c.drawString(2 * cm, page_height - 2 * cm, "How to Print and Use")
-
-  c.setFont("Helvetica", 11)
-  instructions = [
-    "• Print this PDF at 100% scale (do NOT use 'Fit to page').",
-    "• Each tile prints at 20x20 cm and forms a grid of 4x4 squares, each 50mm/2\" to a side.",
-    f"• This layout preview shows how to arrange the tiles.",
-    "• Cut and align the tiles according to the grid.",
-    "• Mount to foam board, wood, or card for maximum durability."
-  ]
-
-  y = page_height - 3.2 * cm
-  for line in instructions:
-    c.drawString(2 * cm, y, line)
-    y -= 0.6 * cm
-
-  # Create preview thumbnail of cropped image with overlaid grid
-  max_preview_width_cm = 10
-  max_preview_height_cm = 10
-  dpi_preview = 118 # ~300 DPI for preview sizing
-  max_preview_width_px = int(max_preview_width_cm * dpi_preview)
-  max_preview_height_px = int(max_preview_height_cm * dpi_preview)
-
-  # Resize with aspect ratio preserved
-  img_w, img_h = image.size
-  aspect_ratio = img_w / img_h
-
-  if (max_preview_width_px / max_preview_height_px) > aspect_ratio:
-    # Height limits size
-    preview_height_px = max_preview_height_px
-    preview_width_px = int(preview_height_px * aspect_ratio)
-  else:
-    # Width limits size
-    preview_width_px = max_preview_width_px
-    preview_height_px = int(preview_width_px / aspect_ratio)
-
-  # Resize the image
-  # Note: Using LANCZOS filter for high-quality downscaling
-  # | Filter       | Downscaling Quality |  Upscaling Quality  | Performance |
-  # +--------------+---------------------+---------------------+-------------+
-  # |NEAREST       |         0           |         0           |      5      |
-  # |BOX           |         1           |         0           |      4      |
-  # |BILINEAR      |         1           |         1           |      3      |
-  # |HAMMING       |         2           |         0           |      3      |
-  # |BICUBIC       |         3           |         3           |      2      |
-  # |LANCZOS       |         4           |         4           |      1      |
-  
-  preview_img = image.resize((preview_width_px, preview_height_px), Image.LANCZOS)
-
-  # Draw grid lines
-  draw = ImageDraw.Draw(preview_img)
-  line_color = "white"
-  line_width = 2
-
-  for i in range(1, cols):
-    x = int(i * preview_width_px / cols)
-    draw.line([(x, 0), (x, preview_height_px)], fill=line_color, width=line_width)
-  for j in range(1, rows):
-    y = int(j * preview_height_px / rows)
-    draw.line([(0, y), (preview_width_px, y)], fill=line_color, width=line_width)
-
-  # Convert preview image to buffer
-  preview_buffer = io.BytesIO()
-  preview_img.save(preview_buffer, format="JPEG", quality=JPEG_QUALITY, optimize=True)
-  preview_buffer.seek(0)
-  preview_reader = ImageReader(preview_buffer)
-
-  # Convert to PDF dimensions (points), enforcing 10x10 cm max size
-  preview_w_cm = preview_width_px / dpi_preview * 2.54
-  preview_h_cm = preview_height_px / dpi_preview * 2.54
-
-  # Final preview dimensions in points (cm -> pt)
-  aspect_ratio = preview_width_px / preview_height_px
-
-  if aspect_ratio >= 1:
-    # Landscape or square
-    preview_w_pt = max_preview_width_cm * cm
-    preview_h_pt = preview_w_pt / aspect_ratio
-  else:
-    # Portrait
-    preview_h_pt = max_preview_height_cm * cm
-    preview_w_pt = preview_h_pt * aspect_ratio
-
-  # Place the preview image centered on the page
-  x_pos = (page_width - preview_w_pt) / 2
-  y_pos = (page_height - preview_h_pt) / 2
-
-  # Draw image on final page
-  c.drawImage(preview_reader, x_pos, y_pos, width=preview_w_pt, height=preview_h_pt)
-  c.showPage()
+    c.save()
+    print(f"✅ PDF saved to: {output_pdf}")
 
 
-# --- Finalize PDF ---
-c.save()
-
-print(f"\n✅ PDF saved to: {output_pdf}")
+if __name__ == "__main__":
+    main()

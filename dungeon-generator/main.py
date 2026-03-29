@@ -11,10 +11,10 @@ Tiles:
 Each tile is chosen randomly, rotated randomly, and placed.
 
 Pipeline:
-  1. build_floor_grid()  — generate map (tile selection + placement)
-  2. _validate_and_fix() — island repair + quality checks; retry on failure
-  3. place_items_*()     — item placement strategy
-  4. render_png()        — render to PNG
+  1. build_floor_grid() : generate map (tile selection + placement)
+  2. _validate_and_fix(): island repair + quality checks; retry on failure
+  3. place_items_*()    : item placement strategy
+  4. render_png()       : render to PNG
 
 Output: PNG images.
 """
@@ -23,7 +23,7 @@ from __future__ import annotations
 import argparse
 import os
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Optional, Set
 from PIL import Image, ImageDraw, ImageOps
 
@@ -98,7 +98,7 @@ def make_o() -> List[List[bool]]:
     return empty_3x3(True)
 
 
-# Canonical (unrotated) tile variants — rotated randomly at placement time.
+# Canonical (unrotated) tile variants: rotated randomly at placement time.
 BASE_TILES: Dict[str, List[List[bool]]] = {
     "+": make_plus(),
     "T": make_t("W"),    # missing W (N/E/S open), then rotate
@@ -125,7 +125,7 @@ class DungeonConfig:
     tile_grid_w: int = 5
     tile_grid_h: int = 4
     tile_size: int = 3            # each tile is 3x3 cells
-    weights: Dict[str, int] = None
+    weights: Dict[str, int] = field(default_factory=lambda: {"+": 4, "I": 2, "L": 1, "O": 4, "T": 5})
     seed: Optional[int] = None
     enforce_connected: bool = False   # wall-off unreachable floors
     big_room_count: int = 1           # 0 or 1 big rooms
@@ -133,10 +133,6 @@ class DungeonConfig:
     min_floor: int = 0                # minimum total floor cells required
     max_rerolls: int = 50             # max whole-map regeneration attempts
     island_rerolls: int = 3           # max passes to reroll disconnected tiles
-
-    def __post_init__(self):
-        if self.weights is None:
-            self.weights = {"+": 4, "I": 2, "L": 1, "O": 4, "T": 5}
 
 
 # ─────────────────────────────────────────────
@@ -203,7 +199,7 @@ def choose_tile_type_for(
         if on_edge   and not rules.get("allow_edge",   True): continue
         return key
 
-    return "L"  # last resort — always valid anywhere
+    return "L"  # last resort: always valid anywhere
 
 def place_tile(
     ttype: str, tx: int, ty: int,
@@ -247,7 +243,7 @@ def _generate_attempt(
 ]:
     """One map-generation attempt: pick tile types and blit them into a floor grid.
 
-    Does not validate or apply connectivity rules — that is handled separately.
+    Does not validate or apply connectivity rules: that is handled separately.
     Returns (floor, tile_types, tile_rots, big_room_origin).
     """
     W = cfg.tile_grid_w * cfg.tile_size
@@ -270,7 +266,9 @@ def _generate_attempt(
         for tx in range(cfg.tile_grid_w):
             if tile_types[ty][tx] is None:
                 tile_types[ty][tx] = choose_tile_type_for(tx, ty, cfg, tile_types, big_room_origin, rng)
-            place_tile(tile_types[ty][tx], tx, ty, cfg, floor, tile_rots, rng)
+            ttype = tile_types[ty][tx]
+            assert ttype is not None
+            place_tile(ttype, tx, ty, cfg, floor, tile_rots, rng)
 
     return floor, tile_types, tile_rots, big_room_origin
 
@@ -435,9 +433,9 @@ def _validate_and_fix(
 ) -> Tuple[List[List[bool]], bool]:
     """Apply connectivity repair and quality checks to a generated map.
 
-    Step 1 — Island repair: reroll disconnected tiles (best-effort fixup).
-    Step 2 — Wall off unreachable floors (failsafe for anything repair missed).
-    Step 3 — Quality checks: reject maps that still don't meet the rules.
+    Step 1: Island repair: reroll disconnected tiles (best-effort fixup).
+    Step 2: Wall off unreachable floors (failsafe for anything repair missed).
+    Step 3: Quality checks: reject maps that still don't meet the rules.
 
     Returns (floor, is_valid). floor may be a new object after wall_off_unreachable.
     """
@@ -490,20 +488,20 @@ def build_floor_grid(
     """Generate a validated dungeon map, retrying up to cfg.max_rerolls times.
 
     The rng is returned so downstream placement can continue the same random
-    sequence — this lets the seed alone reproduce the full output.
+    sequence: this lets the seed alone reproduce the full output.
     """
     rng = random.Random(cfg.seed)
-    last = None
+    floor, tile_types, tile_rots, big_room_origin, counts = None, None, None, None, None
 
     for _ in range(max(1, cfg.max_rerolls + 1)):
         floor, tile_types, tile_rots, big_room_origin = _generate_attempt(cfg, rng)
         floor, valid = _validate_and_fix(floor, tile_types, tile_rots, big_room_origin, cfg, rng)
         counts = count_tile_types(tile_types)
-        last = (floor, tile_types, tile_rots, big_room_origin, counts)
         if valid:
             break
 
-    return *last, rng
+    assert floor is not None and tile_types is not None and tile_rots is not None and counts is not None
+    return floor, tile_types, tile_rots, big_room_origin, counts, rng
 
 
 # ─────────────────────────────────────────────
@@ -657,7 +655,7 @@ def pick_spawn_tiles(
     if not all_candidates:
         return []
 
-    # Prefer O tiles (open rooms) for spawn locations — better combat spaces.
+    # Prefer O tiles (open rooms) for spawn locations: better combat spaces.
     # Fall back to any tile center if not enough O tiles are available.
     return pick_farthest_points(rng, o_candidates, all_candidates, count, seeds=seeds)
 
@@ -694,9 +692,9 @@ def place_items_standard(
     leaf_tile_set = find_leaf_tiles(floor, cfg.tile_grid_w, cfg.tile_grid_h, cfg.tile_size)
 
     # Pick orange markers one at a time using a three-tier priority:
-    #   tier 1 — leaf cells (degree-1 floor cells) on free tiles
-    #   tier 2 — any cell on a free leaf tile (dead-end room, any cell)
-    #   tier 3 — any free floor cell (last resort)
+    #   tier 1: leaf cells (degree-1 floor cells) on free tiles
+    #   tier 2: any cell on a free leaf tile (dead-end room, any cell)
+    #   tier 3: any free floor cell (last resort)
     # Seeded from player + spawns so markers fill the least-covered areas.
     player_seed = ([player] if player else []) + spawns
     leaf_coords: List[Tuple[int, int]] = []
@@ -726,18 +724,16 @@ def place_items_discovery(
     rng: random.Random,
 ) -> Tuple[List[Tuple[int, int]], Optional[Tuple[int, int]], Optional[Tuple[int, int]], List[Marker]]:
     # Place player on the O tile most connected to its neighbours; break ties randomly.
-    bx = by = bs = None
-    if big_room_origin:
-        bx, by, bs = big_room_origin
-
     best_cells: List[Tuple[int, int]] = []
     best_degree = -1
     for ty in range(cfg.tile_grid_h):
         for tx in range(cfg.tile_grid_w):
             if tile_types[ty][tx] != "O":
                 continue
-            if big_room_origin and bx <= tx < bx + bs and by <= ty < by + bs:
-                continue
+            if big_room_origin:
+                bx, by, bs = big_room_origin
+                if bx <= tx < bx + bs and by <= ty < by + bs:
+                    continue
             cx, cy = tx * cfg.tile_size + 1, ty * cfg.tile_size + 1
             if not floor[cy][cx]:
                 continue
@@ -876,7 +872,7 @@ def render_png(
         GRID_BOLD = GRID
         GLOW      = None
 
-    # Draw cells — tile images or solid shapes
+    # Draw cells: tile images or solid shapes
     if use_tile_images and tile_types is not None and tile_rots is not None:
         tile_cells = tile_grid_every if tile_grid_every > 0 else 3
         tile_px = tile_cells * cell_px
@@ -901,7 +897,7 @@ def render_png(
                     continue
                 type_variants = variants.get(ttype, [])
                 if not type_variants:
-                    # No image files found for this type — skip.
+                    # No image files found for this type: skip.
                     continue
                 if not decks[ttype]:
                     deck = list(type_variants)
@@ -912,7 +908,7 @@ def render_png(
                     img_cache[path] = ImageOps.exif_transpose(
                         Image.open(path)
                     ).convert("RGB")
-                scaled = img_cache[path].resize((tile_px, tile_px), Image.LANCZOS)
+                scaled = img_cache[path].resize((tile_px, tile_px), Image.Resampling.LANCZOS)
                 rot = (tile_rots[ty][tx] or 0) % 4
                 if _rot_transpose[rot] is not None:
                     scaled = scaled.transpose(_rot_transpose[rot])
@@ -957,7 +953,7 @@ def render_png(
                 y0 = margin_px + y * cell_px
                 d.line([margin_px, y0, margin_px + W * cell_px, y0], fill=GLOW, width=2)
 
-    # Markers — player, console, spawns, custom
+    # Markers: player, console, spawns, custom
     r = max(3, cell_px // 3)
     if spawns:
         for x, y in spawns:
@@ -1065,18 +1061,20 @@ def collect_stats(n: int = 1000) -> None:
         )
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Dungeon generator")
-    parser.add_argument("--width",          type=int, default=5,          help="Dungeon width in tiles (default: 5)")
-    parser.add_argument("--height",         type=int, default=4,          help="Dungeon height in tiles (default: 4)")
-    parser.add_argument("--placement",      choices=PLACEMENT_STRATEGIES, help="Item placement strategy (default: standard)", default="standard")
-    parser.add_argument("--n",              type=int, default=15,         help="Number of dungeons to generate (default: 15)")
-    parser.add_argument("--theme",          default="scan",               help="Render theme (default: scan)")
-    parser.add_argument("--cell-px",        type=int, default=128,        help="Pixels per cell (controls output resolution, default: 128)")
-    parser.add_argument("--tile-images",    action="store_true",          help="Use tile images from the tiles/ folder instead of drawing shapes")
-    parser.add_argument("--tiles-dir",      default="tiles",              help="Directory containing tile images (default: tiles)")
-    parser.add_argument("--overlay-shapes", action="store_true",          help="Overlay drawn shapes at 50%% opacity on top of tile images (for alignment checking)")
-    args = parser.parse_args()
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Generate randomized dungeon layout PNG images.")
+    ap.add_argument("--width",          type=int, default=5,          help="Dungeon width in tiles (default: 5).")
+    ap.add_argument("--height",         type=int, default=4,          help="Dungeon height in tiles (default: 4).")
+    ap.add_argument("--placement",      choices=PLACEMENT_STRATEGIES, default="standard",
+                                        help="Item placement strategy (default: standard).")
+    ap.add_argument("--n",              type=int, default=15,         help="Number of dungeons to generate (default: 15).")
+    ap.add_argument("--theme",          choices=["scan", "clean"],    default="scan",
+                                        help="Render theme (default: scan).")
+    ap.add_argument("--cell-px",        type=int, default=128,        help="Pixels per cell; controls output resolution (default: 128).")
+    ap.add_argument("--tile-images",    action="store_true",          help="Use tile images from the tiles/ folder instead of drawing shapes.")
+    ap.add_argument("--tiles-dir",      default="tiles",              help="Directory containing tile images (default: tiles).")
+    ap.add_argument("--overlay-shapes", action="store_true",          help="Overlay drawn shapes at 50%% opacity on top of tile images.")
+    args = ap.parse_args()
 
     generate_many(
         n=args.n,
@@ -1091,3 +1089,7 @@ if __name__ == "__main__":
         tiles_dir=args.tiles_dir,
         overlay_shapes=args.overlay_shapes,
     )
+
+
+if __name__ == "__main__":
+    main()

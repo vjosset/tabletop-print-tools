@@ -9,22 +9,15 @@
 #   pip install reportlab pillow
 
 import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "shared"))
+from utils import mm_to_pt, get_page_size
+
 from PIL import Image
 from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.units import inch
-
-def mm_to_pt(mm: float) -> float:
-    return mm / 25.4 * 72.0
-
-def get_page_size(paper: str):
-    paper = paper.lower()
-    if paper in ("letter", "us-letter", "us_letter"):
-        return letter  # (612 x 792) points = 8.5" x 11"
-    elif paper in ("a4",):
-        return A4      # (595 x 842) points = 210mm x 297mm
-    else:
-        raise ValueError("Unsupported paper size. Use 'letter' or 'a4'.")
 
 def draw_calibration(canvas_obj, x, y):
     """

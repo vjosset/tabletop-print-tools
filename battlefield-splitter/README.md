@@ -1,85 +1,86 @@
-# Image Split to Print-Ready PDF
+# battlefield-splitter
 
-This Python script splits a high-resolution image into evenly sized square tiles, overlays a 5x5 grid of **crosshairs (`+`)** on each tile, and compiles them into a multi-page PDF — with each page sized to print exactly **20x20 cm** on a **US Letter** page.
+Two scripts for working with tiled battlefield maps:
 
-Perfect for creating printable battlefield maps, posters, or modular game boards with consistent tile sizes.
-
----
-
-## Features
-
-* Split any image into a grid of square tiles (e.g. `3x2`)
-* Automatically crops and centers to preserve square tiles
-* Overlays a **5x5 grid of crosses (+)** on each tile
-* Customizable grid color and print-scale line width
-* Generates a **single, multi-page PDF** with one tile per page
-* Includes an **optional instruction page** with layout preview
-* PDF metadata includes correct title and page size
-
----
-
-## Usage
-
-```bash
-python BattlefieldPDFGen.py input.jpg --tiles 3x2
-```
-
-### Arguments
-
-| Argument          | Description                                               | Default           |
-| ----------------- | --------------------------------------------------------- | ----------------- |
-| `input.jpg`       | Path to the input image                                   | *(required)*      |
-| `--tiles`         | Tile layout in `COLSxROWS` format                         | `1x1`             |
-| `--grid-color`    | Hex color for the grid "+" markers                        | `#FFFFFF` (white) |
-| `--grid-width-mm` | Grid line width in **millimeters (print)**                | `1`               |
-| `--instructions`  | Include instructions page with a layout preview (1 = yes) | `0` (no)          |
-
----
-
-## Output
-
-* A single PDF file saved **in the same folder** as the input image
-* PDF filename matches the input (e.g. `map.jpg` → `map.pdf`)
-* Each tile is printed on its own US Letter page at **exactly 20x20 cm**
-* The optional instructions page appears **last**, and includes:
-
-  * Print and assembly guidance
-  * A preview of the full layout with grid lines overlaid
-
----
-
-## Printing Instructions
-
-* Open the generated PDF in a standard viewer (e.g. Adobe Acrobat)
-* Print using **"Actual Size"** or **100% scaling** (disable "Fit to Page")
-* Each tile will print at **exactly 20x20 cm**
-* Trim and arrange tiles using the preview guide on the final page
-
----
-
-## Example
-
-```bash
-python .\BattlefieldPDFGen.py --tiles 3x3 --instructions 1 --page_size A4 TheRuinedCity.png
-```
-
-This will:
-
-* Split the image into **4 columns x 3 rows** of square tiles
-* Add red cross-style grid marks to each tile
-* Save a multi-page PDF named `ruined_city.pdf`
-* Append a final page with usage instructions and a layout preview
+- **BattlefieldPDFGen.py** — split a large image into square tiles and export as a multi-page PDF (one tile per page, each 20×20 cm).
+- **CombineTiles.py** — assemble a folder of tile images into a single tiled grid image.
 
 ---
 
 ## Requirements
 
-* Python 3.7+
-* [`Pillow`](https://pypi.org/project/Pillow/) (for image manipulation)
-* [`reportlab`](https://pypi.org/project/reportlab/) (for PDF generation)
-
-Install dependencies:
-
 ```bash
 pip install pillow reportlab
+```
+
+*(CombineTiles.py only needs `pillow`.)*
+
+---
+
+## BattlefieldPDFGen.py
+
+### Usage
+
+```bash
+python BattlefieldPDFGen.py <input_image> [options]
+```
+
+### Options
+
+| Argument | Default | Description |
+|---|---|---|
+| `input_image` | *(required)* | Path to the input image (JPG or PNG) |
+| `--tiles` | `1x1` | Tile grid layout in `COLSxROWS` format, e.g. `3x2` |
+| `--paper` | `letter` | Paper size: `letter` or `a4` |
+| `--grid-color` | `#c54c21` | Hex color for the alignment crosshair marks |
+| `--grid-width-mm` | `1` | Width of crosshair lines in millimeters |
+| `--upscale` | off | Upscale the image to meet minimum tile resolution before processing |
+| `--instructions` | off | Append an instructions page with a layout preview |
+
+### Output
+
+A PDF named `{image_stem}_{Letter|A4}.pdf` saved alongside the input image. One tile per page, each printed at exactly 20×20 cm. The optional instructions page appears last and includes assembly guidance and a full-layout preview.
+
+### Examples
+
+```bash
+# 3-column × 2-row split on Letter paper
+python BattlefieldPDFGen.py map.jpg --tiles 3x2
+
+# 3×3 grid on A4 with instruction page
+python BattlefieldPDFGen.py TheRuinedCity.png --tiles 3x3 --paper a4 --instructions
+```
+
+### Printing
+
+Print at **100% / Actual Size**. Disable "Fit to Page" or any scaling in your print dialog. Each tile will measure exactly 20×20 cm.
+
+---
+
+## CombineTiles.py
+
+### Usage
+
+```bash
+python CombineTiles.py <input_folder> [options]
+```
+
+### Options
+
+| Argument | Default | Description |
+|---|---|---|
+| `input_folder` | *(required)* | Folder containing PNG/JPG images |
+| `--tiles` | `3x3` | Grid layout in `COLSxROWS` format |
+| `--output` | `tiled.png` in the input folder | Output file path |
+
+Images are sorted alphabetically; the first `COLS × ROWS` are used. All images are resized to match the first image's dimensions.
+
+### Examples
+
+```bash
+# 3×3 grid saved as tiled.png inside the folder
+python CombineTiles.py ./my-tokens --tiles 3x3
+
+# 4×2 grid with a custom output path
+python CombineTiles.py ./my-tokens --tiles 4x2 --output sheet.png
 ```

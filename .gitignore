@@ -4,6 +4,7 @@
 
 # Tile assets (large binary files, not tracked)
 dungeon-generator/tiles/
+battlefield-splitter/Unsplash
 
 # Python
 __pycache__/

@@ -1067,7 +1067,7 @@ def main() -> None:
     ap.add_argument("--height",         type=int, default=4,          help="Dungeon height in tiles (default: 4).")
     ap.add_argument("--placement",      choices=PLACEMENT_STRATEGIES, default="standard",
                                         help="Item placement strategy (default: standard).")
-    ap.add_argument("--n",              type=int, default=15,         help="Number of dungeons to generate (default: 15).")
+    ap.add_argument("--n",              type=int, default=3,          help="Number of dungeons to generate (default: 15).")
     ap.add_argument("--theme",          choices=["scan", "clean"],    default="scan",
                                         help="Render theme (default: scan).")
     ap.add_argument("--cell-px",        type=int, default=128,        help="Pixels per cell; controls output resolution (default: 128).")

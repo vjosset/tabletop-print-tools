@@ -24,7 +24,7 @@ python main.py [options]
 |---|---|---|
 | `--width` | `5` | Dungeon width in tiles |
 | `--height` | `4` | Dungeon height in tiles |
-| `--n` | `15` | Number of dungeons to generate |
+| `--n` | `3` | Number of dungeons to generate |
 | `--placement` | `standard` | Marker placement strategy: `standard`, `discovery`, or `none` |
 | `--theme` | `scan` | Render theme: `scan` (green CRT look) or `clean` (dark minimal) |
 | `--cell-px` | `128` | Cell size in pixels; controls output resolution |
@@ -40,14 +40,16 @@ python main.py [options]
 
 ### Output
 
-`dungeon_{SEED}.png` written to the current directory. The seed is embedded in the filename for exact reproduction.
+One `dungeon_{SEED}.png` per map, written to the current directory. The seed is embedded in the filename for reproduction (see below).
+
+Below the map, each PNG has a caption listing how many of each tile type that map uses, e.g. `+:2 I:4 L:4 O:8 T:2`. Use it to pull the right physical tiles before laying out the map. The caption is about 30% of a cell tall, so it scales with `--cell-px`, and it shrinks to fit when the map is too narrow to hold it.
 
 ---
 
 ## Sample Usage
 
 ```bash
-# Default: 15 dungeons at 5×4 tile grid, standard placement, scan theme
+# Default: 3 dungeons at 5×4 tile grid, standard placement, scan theme
 python main.py
 
 # Wider dungeon
@@ -82,22 +84,30 @@ The dungeon is a grid of tiles (default 5×4), each tile being 3×3 cells. Each 
 - `I` tiles are allowed on edges but not corners.
 - `L` and `O` tiles can go anywhere.
 - Two `O` tiles may never be orthogonally adjacent (prevents large featureless open areas).
+- Two `I` tiles may never sit end to end on the same axis (prevents long 1-wide corridors).
 - Any tile that produces an all-wall 3×3 block is rejected and the map is rerolled.
+- Disconnected tiles are rerolled; any floor still unreachable after that is walled off.
 
 ---
 
 ## Reproducing a dungeon
 
-Each PNG is named after its RNG seed (e.g. `dungeon_1436804428.png`). To regenerate that exact dungeon:
+Each PNG is named after its RNG seed (e.g. `dungeon_1436804428.png`). To regenerate that exact dungeon, including its markers:
 
 ```python
-from main import DungeonConfig, build_floor_grid, render_png
+from main import DungeonConfig, build_floor_grid, render_png, PLACEMENT_STRATEGIES
 
-cfg = DungeonConfig(seed=1436804428, enforce_connected=True, big_room_count=0)
+cfg = DungeonConfig(seed=1436804428, enforce_connected=True, big_room_count=0,
+                    tile_grid_w=5, tile_grid_h=4)   # match the --width/--height used
 floor, tile_types, tile_rots, big_room_origin, counts, rng = build_floor_grid(cfg)
-render_png(floor, spawns=[], player=None, console=None,
-           tile_counts=counts, markers=[], out_path="replay.png")
+spawns, player, console, markers = PLACEMENT_STRATEGIES["standard"](  # match --placement
+    floor, tile_types, big_room_origin, cfg, rng)
+render_png(floor, spawns=spawns, player=player, console=console, markers=markers,
+           tile_counts=counts, theme="scan", tile_types=tile_types, tile_rots=tile_rots,
+           rng=rng, out_path="replay.png")
 ```
+
+The seed fixes the layout and markers; the width, height and placement strategy must match the original run. With `--tile-images`, also pass `use_tile_images=True` (and `tiles_dir`) to pick the same image variants.
 
 ---
 
@@ -106,18 +116,22 @@ render_png(floor, spawns=[], player=None, console=None,
 To find out how many physical tiles a player needs to cover most generated dungeons:
 
 ```bash
-python -c "from main import collect_stats; collect_stats(12000)"
+python -c "from main import collect_stats; collect_stats(12000, big_room_every=0)"
 ```
 
-This runs the generator 12,000 times and prints a table of min/avg/p90/p95/max counts per tile type. The p95 column is the recommended ownership count.
+This runs the generator 12,000 times on the default 5×4 grid and prints a table of min/avg/p90/p95/max counts per tile type. The p95 column is the recommended ownership count: owning that many of a tile type covers it in about 95% of maps.
 
-### 5×4 dungeon, big room every 3 maps
+`big_room_every=0` matches what `main.py` generates, since the command line never adds big rooms. Leave it out (default `3`) to add a 2×2 big room of `O` tiles to every third map.
+
+### 5×4 dungeon, no big rooms (matches `main.py`)
 
 | Tile | min | avg | p90 | p95 | max |
 |:---:|:---:|:---:|:---:|:---:|:---:|
-| `+` | 0 | 1.5 | 3 | 3 | 6 |
-| `I` | 0 | 3.2 | 5 | 5 | 8 |
-| `L` | 1 | 6.2 | 8 | 9 | 13 |
-| `O` | 3 | 7.3 | 9 | 9 | 10 |
-| `T` | 0 | 1.8 | 3 | 4 | 6 |
-| **Total** | | | | **30** | **43** |
+| `+` | 0 | 2.0 | 3 | 4 | 6 |
+| `I` | 0 | 4.1 | 6 | 6 | 8 |
+| `L` | 2 | 5.0 | 7 | 7 | 11 |
+| `O` | 3 | 6.8 | 8 | 8 | 10 |
+| `T` | 0 | 2.2 | 4 | 4 | 6 |
+| **Sum of p95** | | | | **29** | |
+
+Every 5×4 map uses exactly 20 tiles; the sum of p95 is how many physical tiles to own so each type individually is covered about 95% of the time.

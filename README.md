@@ -55,7 +55,7 @@ pip install pillow
 python main.py [--width W] [--height H] [--n N] [--placement standard|discovery|none] [--theme scan|clean]
 ```
 
-Output: `dungeon_{SEED}.png` per generated map. The seed can be used to reproduce any dungeon exactly.
+Output: `dungeon_{SEED}.png` per generated map (3 by default), with a caption listing the count of each tile type. The seed can be used to reproduce any dungeon exactly.
 
 ---
 

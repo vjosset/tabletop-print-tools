@@ -25,7 +25,7 @@ import os
 import random
 from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Optional, Set
-from PIL import Image, ImageDraw, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 
 @dataclass
@@ -815,6 +815,37 @@ def _discover_tile_variants(tiles_dir: str) -> Dict[str, List[str]]:
     return variants
 
 
+def _load_font(size: int) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
+    """Return a scalable font at the given pixel size.
+
+    Uses Pillow's bundled font (Pillow >= 10.1), then common system fonts,
+    then the fixed-size bitmap default as a last resort.
+    """
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:
+        pass
+    for name in ("DejaVuSans.ttf", "arial.ttf", "Arial.ttf"):
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _caption_font(
+    label: str, cell_px: int, max_width: int,
+) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
+    """Font for the tile-count caption: ~30% of a cell tall, shrunk to fit max_width."""
+    size = max(12, round(cell_px * 0.3))
+    font = _load_font(size)
+    width = ImageDraw.Draw(Image.new("RGB", (1, 1))).textlength(label, font=font)
+    if width > max_width > 0:
+        size = max(8, int(size * max_width / width))
+        font = _load_font(size)
+    return font
+
+
 def render_png(
     floor: List[List[bool]],
     cell_px: int = 128,
@@ -838,7 +869,10 @@ def render_png(
     H = len(floor)
     W = len(floor[0]) if H else 0
     img_w  = margin_px * 2 + W * cell_px
-    text_pad = 18 if tile_counts else 0
+    label = "  ".join(f"{k}:{tile_counts[k]}" for k in sorted(tile_counts)) if tile_counts else ""
+    font = _caption_font(label, cell_px, W * cell_px) if label else None
+    font_px = getattr(font, "size", 10) if font else 0
+    text_pad = round(font_px * 1.6) if label else 0
     img_h  = margin_px * 2 + H * cell_px + text_pad
 
     def lerp(a: int, b: int, t: float) -> int:
@@ -973,9 +1007,10 @@ def render_png(
             cx, cy = margin_px + m.x * cell_px + cell_px // 2, margin_px + m.y * cell_px + cell_px // 2
             d.ellipse([cx - r2, cy - r2, cx + r2, cy + r2], fill=m.color)
 
-    if tile_counts:
-        label = "  ".join(f"{k}:{tile_counts[k]}" for k in sorted(tile_counts))
-        d.text((margin_px, margin_px + H * cell_px + 2), label, fill=(200, 200, 200))
+    if label:
+        # Vertically centre the caption in the strip between the map and the bottom margin.
+        strip_mid = margin_px + H * cell_px + (text_pad + margin_px) / 2
+        d.text((margin_px, strip_mid), label, fill=(200, 200, 200), font=font, anchor="lm")
 
     img.save(out_path)
     print(f"Saved: {out_path}")
@@ -1031,15 +1066,19 @@ def generate_many(
         )
 
 
-def collect_stats(n: int = 1000) -> None:
-    """Run the generator n times and print tile-count percentile stats."""
+def collect_stats(n: int = 1000, big_room_every: int = 3) -> None:
+    """Run the generator n times and print tile-count percentile stats.
+
+    big_room_every: add a 2x2 big room to every Nth map (0 disables big rooms,
+    matching what the command-line generator produces).
+    """
     import statistics
 
     all_counts: Dict[str, List[int]] = {k: [] for k in BASE_TILES}
     for i in range(n):
         cfg = DungeonConfig(
             enforce_connected=True,
-            big_room_count=1 if (i + 1) % 3 == 0 else 0,
+            big_room_count=1 if big_room_every > 0 and (i + 1) % big_room_every == 0 else 0,
         )
         _, _, _, _, counts, _ = build_floor_grid(cfg)
         for tile in BASE_TILES:
@@ -1067,7 +1106,7 @@ def main() -> None:
     ap.add_argument("--height",         type=int, default=4,          help="Dungeon height in tiles (default: 4).")
     ap.add_argument("--placement",      choices=PLACEMENT_STRATEGIES, default="standard",
                                         help="Item placement strategy (default: standard).")
-    ap.add_argument("--n",              type=int, default=3,          help="Number of dungeons to generate (default: 15).")
+    ap.add_argument("--n",              type=int, default=3,          help="Number of dungeons to generate (default: 3).")
     ap.add_argument("--theme",          choices=["scan", "clean"],    default="scan",
                                         help="Render theme (default: scan).")
     ap.add_argument("--cell-px",        type=int, default=128,        help="Pixels per cell; controls output resolution (default: 128).")

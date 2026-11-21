@@ -1,0 +1,47 @@
+# Settings for bake_floors.py
+# [default] applies to every material; a table named after a material
+# (the part of the zip name before the first "_") overrides it.
+
+[default]
+repeats = 1              # texture repeats across the output image
+target_value = 118       # mean brightness, 0-255 (theme mid-tone)
+target_contrast = 16     # brightness spread; lower = calmer floor
+tint = [122, 113, 98]    # theme palette colour
+tint_amount = 0.55       # 0 = texture's own colour, 1 = fully palette
+normal_strength = 2.0    # overhead-light shading from the normal map
+cavity_strength = 1.0    # grime in lows, wear on highs (displacement)
+ao_strength = 0.6        # AO map, or AO derived from displacement
+# Grid grooves are a command-line option: --grid 640
+
+# Example override:
+# [Asphalt019]
+# target_contrast = 12
+
+# 8x8 paving stones; cut 2 stones per grid square instead of stretching all 8
+[Tiles085]
+cells = 8
+cells_per_square = 2
+
+[PavingStones079]
+cells = 4
+cells_per_square = 1
+
+[PavingStones082]
+cells = 4
+cells_per_square = 1
+
+[Tiles002]
+cells = 4
+cells_per_square = 1
+
+[Bricks108B]
+cells = 7
+cells_per_square = 2
+
+[PavingStones109]
+cells = 10
+cells_per_square = 3
+
+[Concrete031]
+cells = 4
+cells_per_square = 1

@@ -4,6 +4,8 @@
 
 # Tile assets (large binary files, not tracked)
 dungeon-generator/tiles/
+gow-dungeon-generator/tiles/
+tile-dungeon-generator/tilesets/gow/
 battlefield-splitter/Unsplash
 battlefield-splitter/ImageSearch
 
@@ -22,3 +24,13 @@ settings.local.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Inputs
+
+**/incoming/
+**/incoming_done/
+
+# Outputs (build lists)
+gow-dungeon-generator/output/
+dungeon-generator/output/
+tile-dungeon-generator/output/

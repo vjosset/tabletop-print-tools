@@ -1,0 +1,27 @@
+{
+  "_about": [
+    "Test tiles with centred connectors, each with exactly two openings, so every dungeon is a single path.",
+    "Three sizes (1x1, 1x2, 2x2), each as a straight (I) and a corner (L).",
+    "LG_I is an offset straight: north on its top-left square, south on its bottom-right square.",
+    "LG_I_01.png has a faint lighter patch on the top edge of its right square; it is treated as a wall.",
+    "Each tile is one shape; its 'images' are art variations, spread evenly over the tiles placed.",
+    "No 'copies', so each tile can be used any number of times."
+  ],
+  "name": "Test01Linear",
+  "image_dir": "test01-linear",
+  "grid": {"width": 5, "height": 4},
+  "border_openings": 2,
+  "number_rooms": false,
+  "limits": {
+    "large": {"min": 1, "max": 1},
+    "medium": {"min": 1, "max": 2}
+  },
+  "tiles": {
+    "SM_I": {"openings": "NS", "images": ["SM_I_01.png", "SM_I_02.png", "SM_I_03.png", "SM_I_04.png"], "tags": ["small"]},
+    "SM_L": {"openings": "NE", "images": ["SM_L_01.png", "SM_L_02.png", "SM_L_03.png", "SM_L_04.png"], "tags": ["small"]},
+    "MD_I": {"size": [1, 2], "openings": [[0, 0, "N"], [0, 1, "S"]], "images": ["MD_I_01.png", "MD_I_02.png"], "tags": ["medium"]},
+    "MD_L": {"size": [1, 2], "openings": [[0, 0, "N"], [0, 1, "E"]], "images": ["MD_L_01.png", "MD_L_02.png"], "tags": ["medium"]},
+    "LG_I": {"size": [2, 2], "openings": [[0, 0, "N"], [1, 1, "S"]], "images": ["LG_I_01.png", "LG_I_02.png"], "tags": ["large"]},
+    "LG_L": {"size": [2, 2], "openings": [[0, 0, "N"], [1, 1, "E"]], "images": ["LG_L_01.png", "LG_L_02.png"], "tags": ["large"]}
+  }
+}

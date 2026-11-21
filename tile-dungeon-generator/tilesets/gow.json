@@ -1,0 +1,52 @@
+{
+  "_about": [
+    "Gears of War board game (2011) tiles. One entry per tile side, keyed by the ID printed on the tile.",
+    "Both sides of a physical tile share a 'piece', so only one side is used per dungeon.",
+    "Scans live in tilesets/gow/ and are git-ignored: they're published game art, never commit them."
+  ],
+  "name": "GoW",
+  "image_dir": "gow",
+  "grid": {"width": 5, "height": 4},
+  "border_openings": 2,
+  "number_rooms": true,
+  "limits": {
+    "medium": {"max": 2},
+    "boss": {"min": 0, "max": 1}
+  },
+  "tiles": {
+    "1A": {"piece": "1", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "W"]], "image": "Tile1A.png", "tags": ["small"]},
+    "1B": {"piece": "1", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "S"]], "image": "Tile1B.png", "tags": ["small"]},
+    "2A": {"piece": "2", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "S"]], "image": "Tile2A.png", "tags": ["small"]},
+    "2B": {"piece": "2", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "E"]], "image": "Tile2B.png", "tags": ["small"]},
+    "3A": {"piece": "3", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "S"]], "image": "Tile3A.png", "tags": ["small"]},
+    "3B": {"piece": "3", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "E"]], "image": "Tile3B.png", "tags": ["small"]},
+    "4A": {"piece": "4", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "S"]], "image": "Tile4A.png", "tags": ["small"]},
+    "4B": {"piece": "4", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "E"]], "image": "Tile4B.png", "tags": ["small"]},
+    "5A": {"piece": "5", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "S"]], "image": "Tile5A.png", "tags": ["small"]},
+    "5B": {"piece": "5", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "S"]], "image": "Tile5B.png", "tags": ["small"]},
+    "6A": {"piece": "6", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "W"]], "image": "Tile6A.png", "tags": ["small"]},
+    "6B": {"piece": "6", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "S"]], "image": "Tile6B.png", "tags": ["small"]},
+    "7A": {"piece": "7", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "E"]], "image": "Tile7A.png", "tags": ["small"]},
+    "7B": {"piece": "7", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "S"]], "image": "Tile7B.png", "tags": ["small"]},
+    "8A": {"piece": "8", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "W"]], "image": "Tile8A.png", "tags": ["small"]},
+    "8B": {"piece": "8", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "S"]], "image": "Tile8B.png", "tags": ["small"]},
+    "9A": {"piece": "9", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "E"]], "image": "Tile9A.png", "tags": ["small"]},
+    "9B": {"piece": "9", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "W"]], "image": "Tile9B.png", "tags": ["small"]},
+    "10A": {"piece": "10", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "S"]], "image": "Tile10A.png", "tags": ["small"]},
+    "10B": {"piece": "10", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "W"]], "image": "Tile10B.png", "tags": ["small"]},
+    "11A": {"piece": "11", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "S"]], "image": "Tile11A.png", "tags": ["small"]},
+    "11B": {"piece": "11", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "W"]], "image": "Tile11B.png", "tags": ["small"]},
+    "12A": {"piece": "12", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "S"]], "image": "Tile12A.png", "tags": ["small"]},
+    "12B": {"piece": "12", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "E"]], "image": "Tile12B.png", "tags": ["small"]},
+    "13A": {"piece": "13", "copies": 1, "size": [2, 1], "openings": [[0, 0, "W"], [0, 0, "S"]], "image": "Tile13A.png", "tags": ["medium"]},
+    "13B": {"piece": "13", "copies": 1, "size": [2, 1], "openings": [[0, 0, "S"], [1, 0, "N"]], "image": "Tile13B.png", "tags": ["medium"]},
+    "14A": {"piece": "14", "copies": 1, "size": [2, 1], "openings": [[0, 0, "W"], [1, 0, "E"]], "image": "Tile14A.png", "tags": ["medium"]},
+    "14B": {"piece": "14", "copies": 1, "size": [2, 1], "openings": [[0, 0, "W"], [0, 0, "N"]], "image": "Tile14B.png", "tags": ["medium"]},
+    "15A": {"piece": "15", "copies": 1, "size": [2, 1], "openings": [[0, 0, "W"], [1, 0, "N"]], "image": "Tile15A.png", "tags": ["medium"]},
+    "15B": {"piece": "15", "copies": 1, "size": [2, 1], "openings": [[0, 0, "W"], [1, 0, "S"]], "image": "Tile15B.png", "tags": ["medium"]},
+    "16A": {"piece": "16", "copies": 1, "size": [2, 1], "openings": [[0, 0, "S"], [1, 0, "E"]], "image": "Tile16A.png", "tags": ["medium"]},
+    "16B": {"piece": "16", "copies": 1, "size": [2, 1], "openings": [[0, 0, "W"], [1, 0, "E"]], "image": "Tile16B.png", "tags": ["medium"]},
+    "17A": {"piece": "17", "copies": 1, "size": [2, 2], "openings": [[1, 1, "S"], [0, 0, "N"]], "image": "Tile17A.png", "tags": ["large", "boss"]},
+    "17B": {"piece": "17", "copies": 1, "size": [2, 2], "openings": [[1, 1, "S"], [1, 0, "N"]], "image": "Tile17B.png", "tags": ["large", "boss"]}
+  }
+}

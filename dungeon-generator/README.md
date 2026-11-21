@@ -31,6 +31,7 @@ python main.py [options]
 | `--tile-images` | off | Use tile artwork from the `tiles/` folder instead of drawn geometry |
 | `--tiles-dir` | `tiles` | Directory containing tile image variants |
 | `--overlay-shapes` | off | Overlay drawn geometry at 50% opacity on top of tile images |
+| `--out-dir` | `output/` | Where to write the PNGs (the `output` folder next to `main.py`, created if missing) |
 
 ### Placement strategies
 
@@ -40,7 +41,7 @@ python main.py [options]
 
 ### Output
 
-One `dungeon_{SEED}.png` per map, written to the current directory. The seed is embedded in the filename for reproduction (see below).
+One `dungeon_{SEED}.png` per map, written to `output/` in this folder (or `--out-dir`). The seed is embedded in the filename for reproduction (see below).
 
 Below the map, each PNG has a caption listing how many of each tile type that map uses, e.g. `+:2 I:4 L:4 O:8 T:2`. Use it to pull the right physical tiles before laying out the map. The caption is about 30% of a cell tall, so it scales with `--cell-px`, and it shrinks to fit when the map is too narrow to hold it.
 

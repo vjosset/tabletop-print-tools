@@ -10,6 +10,8 @@ A collection of Python utilities for generating and preparing print-ready assets
 |---|---|
 | [battlefield-splitter/](battlefield-splitter/) | Split a large map image into tiled pages and export as a multi-page PDF; or combine tile images into a single grid image |
 | [dungeon-generator/](dungeon-generator/) | Procedurally generate randomized dungeon maps as PNG images |
+| [gow-dungeon-generator/](gow-dungeon-generator/) | Build gap-free random dungeons from Gears of War board game tiles, with a printable build list (being replaced by tile-dungeon-generator) |
+| [tile-dungeon-generator/](tile-dungeon-generator/) | Build gap-free random dungeons from any tile set described in JSON (tiles of any size, any openings) |
 | [image-resizer/](image-resizer/) | Embed an image into a PDF at an exact physical size |
 | [image-folder-print/](image-folder-print/) | Pack a folder of images into a single print-ready PDF at target physical dimensions |
 
@@ -55,7 +57,24 @@ pip install pillow
 python main.py [--width W] [--height H] [--n N] [--placement standard|discovery|none] [--theme scan|clean]
 ```
 
-Output: `dungeon_{SEED}.png` per generated map (3 by default), with a caption listing the count of each tile type. The seed can be used to reproduce any dungeon exactly.
+Output: `dungeon_{SEED}.png` per generated map (3 by default) in `dungeon-generator/output/`, with a caption listing the count of each tile type. The seed can be used to reproduce any dungeon exactly.
+
+---
+
+## gow-dungeon-generator
+
+Builds random, gap-free dungeons (default 5×4 small-tile units) from *Gears of War* board game tiles. Each dungeon is a single path from entrance to exit, using either side of each tile in any rotation. It renders the layout from your own tile scans (not included) and writes a build list with positions, rotations, spawn and loot counts, and optional per-room rewards.
+
+**Install:**
+```bash
+pip install pillow
+```
+
+```bash
+python main.py [--width W] [--height H] [--mediums N] [--no-boss] [--n N] [--seed SEED]
+```
+
+Output: `gow_dungeon_{SEED}.png` and `gow_dungeon_{SEED}.txt` per dungeon, in `gow-dungeon-generator/output/`. Tile scans go in `gow-dungeon-generator/tiles/` (not included).
 
 ---
 

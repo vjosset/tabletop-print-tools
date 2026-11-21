@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Optional, Set
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
+DEFAULT_OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+
 
 @dataclass
 class Marker:
@@ -1113,11 +1115,13 @@ def main() -> None:
     ap.add_argument("--tile-images",    action="store_true",          help="Use tile images from the tiles/ folder instead of drawing shapes.")
     ap.add_argument("--tiles-dir",      default="tiles",              help="Directory containing tile images (default: tiles).")
     ap.add_argument("--overlay-shapes", action="store_true",          help="Overlay drawn shapes at 50%% opacity on top of tile images.")
+    ap.add_argument("--out-dir",        default=DEFAULT_OUT_DIR,      help="Where to write the PNGs (default: output/ in this folder).")
     args = ap.parse_args()
+    os.makedirs(args.out_dir, exist_ok=True)
 
     generate_many(
         n=args.n,
-        out_dir=".",
+        out_dir=args.out_dir,
         enforce_connected=True,
         theme=args.theme,
         tile_grid_w=args.width,

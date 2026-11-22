@@ -16,6 +16,9 @@ Tiles may be any rectangular size (1x1, 2x1, 2x2...) and are rotated freely.
 A tile with several images is one shape to the solver; once the layout is
 solved, its images are spread evenly over the copies placed.
 
+Game markers (start, console, spawns, loot...) are placed by a rules file in
+rules/. This script only interprets the rules; it defines none of its own.
+
 Output: one {tileset}_dungeon_{SEED}.png per dungeon, drawn from the tile
 images (or a schematic for tiles whose image is missing).
 """
@@ -35,6 +38,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TILESETS_DIR = os.path.join(HERE, "tilesets")
+RULES_DIR = os.path.join(HERE, "rules")
 DEFAULT_OUT_DIR = os.path.join(HERE, "output")
 
 DIRS: Dict[str, Tuple[int, int]] = {"N": (0, -1), "E": (1, 0), "S": (0, 1), "W": (-1, 0)}
@@ -89,7 +93,7 @@ class TileSet:
     border: Tuple[int, int]       # allowed number of openings facing the map edge
     limits: Dict[str, Limit]
     number_rooms: bool = False    # badge each tile with its order from the entrance (only meaningful for single-path sets)
-    placement: Optional[PlacementRules] = None
+    rules: str = "default"        # rules file (name in rules/ or path) used when --rules isn't given
 
 
 def parse_border(value) -> Tuple[int, int]:
@@ -148,16 +152,31 @@ def _parse_images(tid: str, t: dict, image_dir: str) -> List[Art]:
             for f, c in entries]
 
 
-def resolve_tileset_path(arg: str) -> str:
-    """Accept a file path, or a bare name of a file in tilesets/ (with or without .json)."""
-    candidates = [arg, arg + ".json",
-                  os.path.join(TILESETS_DIR, arg), os.path.join(TILESETS_DIR, arg + ".json")]
+def _resolve_json(arg: str, folder: str, what: str, relative_to: Optional[str] = None) -> str:
+    """Accept a file path (relative to the working directory, or to `relative_to`),
+    or a bare name of a file in `folder` (with or without .json)."""
+    candidates = [arg, arg + ".json"]
+    if relative_to:
+        candidates += [os.path.join(relative_to, arg), os.path.join(relative_to, arg + ".json")]
+    candidates += [os.path.join(folder, arg), os.path.join(folder, arg + ".json")]
     for c in candidates:
         if os.path.isfile(c):
             return os.path.abspath(c)
-    available = sorted(f[:-5] for f in os.listdir(TILESETS_DIR) if f.endswith(".json")) \
-        if os.path.isdir(TILESETS_DIR) else []
-    raise SystemExit(f"Tile set {arg!r} not found. Available in tilesets/: {', '.join(available) or 'none'}.")
+    available = sorted(f[:-5] for f in os.listdir(folder) if f.endswith(".json")) \
+        if os.path.isdir(folder) else []
+    raise SystemExit(f"{what} {arg!r} not found. "
+                     f"Available in {os.path.basename(folder)}/: {', '.join(available) or 'none'}.")
+
+
+def resolve_tileset_path(arg: str) -> str:
+    return _resolve_json(arg, TILESETS_DIR, "Tile set")
+
+
+def resolve_rules_path(arg: str, tileset_path: Optional[str] = None) -> str:
+    """A rules file named on the command line or in a tile set (paths in a tile set
+    may be relative to it)."""
+    return _resolve_json(arg, RULES_DIR, "Rules file",
+                         os.path.dirname(tileset_path) if tileset_path else None)
 
 
 def load_tileset(path: str) -> TileSet:
@@ -199,6 +218,9 @@ def load_tileset(path: str) -> TileSet:
 
     limits = {tag: Limit(int(v.get("min", 0)), None if v.get("max") is None else int(v["max"]))
               for tag, v in data.get("limits", {}).items() if not tag.startswith("_")}
+    if "placement" in data:
+        raise SystemExit(f"{os.path.basename(path)}: the \"placement\" section now lives in its own file in "
+                         f"rules/. Move it there and point to it with \"rules\": \"<name>\".")
     return TileSet(
         name=data.get("name") or os.path.splitext(os.path.basename(path))[0],
         path=path,
@@ -209,7 +231,7 @@ def load_tileset(path: str) -> TileSet:
         border=parse_border(data.get("border_openings", 0)),
         limits=limits,
         number_rooms=bool(data.get("number_rooms", False)),
-        placement=parse_placement(data.get("placement", {}), os.path.basename(path)),
+        rules=str(data.get("rules", "default")),
     )
 
 
@@ -567,26 +589,13 @@ class Solver:
 # ─────────────────────────────────────────────
 # Each grid square is split into SUB x SUB spaces, all floor. Walls are the
 # tile edges; a connector is the middle space of a grid square's edge.
-# Markers are placed by an ordered list of rules (from the tile set, or the
-# defaults below). Rules choose a tile; the marker then goes on a free space in it.
+# Markers are placed by an ordered list of rules from a rules file (rules/*.json).
+# Which markers exist and where they go is data; this section is only the engine
+# that interprets it. Rules choose a tile; the marker then goes on a free space in it.
 
 SUB = 3
 Space = Tuple[int, int]           # (x, y) in spaces, from the map's top-left
 
-DEFAULT_MARKER_TYPES = {
-    "start":     {"color": "#2850dc"},
-    "console":   {"color": "#28b450", "objective": True},
-    "spawn":     {"color": "#dc2828"},
-    "loot":      {"color": "#dc8c28", "size": "small"},
-    "discovery": {"color": "#dc8c28", "size": "small", "label": "?"},
-}
-DEFAULT_MARKERS = [
-    {"type": "console", "distance": [3, None]},
-    {"type": "spawn", "distance": [2, 4]},
-    {"type": "spawn", "count": 2, "distance": [2, None], "pick": "spread"},
-    {"type": "loot", "count": 3, "pick": "spread", "prefer": ["off_route", "dead_end"],
-     "spread_from": ["start", "spawn", "loot"]},
-]
 PICKS = ("random", "spread")
 PREFERENCES = ("off_route", "dead_end")
 
@@ -598,6 +607,7 @@ class MarkerType:
     size: str = "large"           # "large" | "small"
     label: str = ""               # text drawn on the marker, e.g. "?"
     objective: bool = False       # the main route runs through markers of this type
+    defaults: Dict[str, object] = field(default_factory=dict)   # rule fields its rules inherit
 
 
 @dataclass
@@ -626,17 +636,25 @@ def _parse_colour(where: str, value) -> Tuple[int, int, int]:
     raise SystemExit(f"{where}: colour must be \"#rrggbb\" or [r, g, b], got {value!r}.")
 
 
-def parse_placement(raw: dict, where: str) -> PlacementRules:
-    """The tile set's "placement" section, on top of the defaults.
+RULE_FIELDS = ("count", "distance", "from", "pick", "prefer", "spread_from")
 
-    Marker types are merged with the defaults (so a tile set can recolour one);
-    a "markers" list replaces the default rules entirely.
+
+# Marker types the engine itself draws, which a rules file must define.
+REQUIRED_TYPES = {"start": "the player start, drawn when the dungeon has no IN marker"}
+STRATEGY_TYPES = {"discovery": "discovery"}   # strategy -> marker type it places
+
+
+def load_rules(path: str, tags: FrozenSet[str] = frozenset()) -> PlacementRules:
+    """Read a rules file. `tags` are the tile set's tile tags, which "prefer" may name.
+
+    Rule fields set on a marker type are defaults for that type's rules; a rule's own
+    value wins.
     """
+    with open(path, encoding="utf-8") as f:
+        raw = json.load(f)
+    where = os.path.basename(path)
     types: Dict[str, MarkerType] = {}
-    merged = {n: dict(v) for n, v in DEFAULT_MARKER_TYPES.items()}
-    for n, v in raw.get("marker_types", {}).items():
-        if not n.startswith("_"):
-            merged[n] = {**merged.get(n, {}), **v}
+    merged = {n: v for n, v in raw.get("marker_types", {}).items() if not n.startswith("_")}
     for n, v in merged.items():
         if "color" not in v:
             raise SystemExit(f"{where}: marker type {n!r} needs a \"color\".")
@@ -644,15 +662,21 @@ def parse_placement(raw: dict, where: str) -> PlacementRules:
         if size not in ("large", "small"):
             raise SystemExit(f"{where}: marker type {n!r} size must be \"large\" or \"small\".")
         types[n] = MarkerType(n, _parse_colour(f"{where}: marker type {n!r}", v["color"]),
-                              size, str(v.get("label", "")), bool(v.get("objective", False)))
+                              size, str(v.get("label", "")), bool(v.get("objective", False)),
+                              {k: v[k] for k in RULE_FIELDS if k in v})
+
+    for n, why in REQUIRED_TYPES.items():
+        if n not in types:
+            raise SystemExit(f"{where}: needs a {n!r} marker type ({why}).")
 
     rules: List[MarkerRule] = []
     placed = {"start"}
-    for i, r in enumerate(raw.get("markers", DEFAULT_MARKERS)):
+    for i, r in enumerate(raw.get("markers", [])):
         here = f"{where}: marker rule {i + 1}"
         t = r.get("type")
         if t not in types:
             raise SystemExit(f"{here}: unknown marker type {t!r}. Known: {', '.join(sorted(types))}.")
+        r = {**types[t].defaults, **r}
         lo, hi = r.get("distance", [1, None])
         source = r.get("from", "start")
         if source not in placed:
@@ -662,16 +686,24 @@ def parse_placement(raw: dict, where: str) -> PlacementRules:
             raise SystemExit(f"{here}: \"pick\" must be one of {', '.join(PICKS)}.")
         prefer = list(r.get("prefer", []))
         for p in prefer:
-            if p not in PREFERENCES:
-                raise SystemExit(f"{here}: unknown preference {p!r}. Known: {', '.join(PREFERENCES)}.")
+            if p not in PREFERENCES and p not in tags:
+                raise SystemExit(f"{here}: unknown preference {p!r}: use {', '.join(PREFERENCES)} "
+                                 f"or a tile tag ({', '.join(sorted(tags))}).")
         rules.append(MarkerRule(t, int(r.get("count", 1)), (int(lo), None if hi is None else int(hi)),
                                 source, pick, prefer, list(r.get("spread_from", ["start", t]))))
         placed.add(t)
 
     strategy = raw.get("strategy", "standard")
+    check_strategy(PlacementRules(strategy, types, rules), strategy, where)
+    return PlacementRules(strategy, types, rules)
+
+
+def check_strategy(rules: PlacementRules, strategy: str, where: str) -> None:
     if strategy not in PLACEMENT_STRATEGIES:
         raise SystemExit(f"{where}: placement strategy must be one of {', '.join(PLACEMENT_STRATEGIES)}.")
-    return PlacementRules(strategy, types, rules)
+    needed = STRATEGY_TYPES.get(strategy)
+    if needed and needed not in rules.types:
+        raise SystemExit(f"{where}: the {strategy!r} strategy needs a {needed!r} marker type.")
 
 
 @dataclass
@@ -691,8 +723,9 @@ class Items:
 class SpaceMap:
     """The layout as spaces, plus the tile graph (which tiles connect through connectors)."""
 
-    def __init__(self, layout: Layout):
+    def __init__(self, layout: Layout, ts: TileSet):
         self.layout = layout
+        self.tags = [ts.tiles[p.variant.tile_id].tags for p in layout.placements]
         self.W, self.H = layout.width * SUB, layout.height * SUB
         self.open = [[frozenset()] * layout.width for _ in range(layout.height)]
         for p in layout.placements:
@@ -821,8 +854,12 @@ def _pick_tile(sm: SpaceMap, rng: random.Random, rules: PlacementRules, rule: Ma
             targets += [sm.layout.cells[y][x] for x, y, _ in sm.layout.border_openings[1:]]
             route = sm.route(start_tile, targets)
             narrowed = [t for t in pool if t not in route]
-        else:  # dead_end
+        elif pref == "dead_end":
             narrowed = [t for t in pool if sm.degree(t) == 1]
+        else:  # a tile tag; tagged tiles with no marker yet come first, to spread markers over the rooms
+            narrowed = [t for t in pool if pref in sm.tags[t]]
+            marked = {sm.tile((m.x, m.y)) for m in items.markers}
+            narrowed = [t for t in narrowed if t not in marked] or narrowed
         pool = narrowed or pool
 
     if rule.pick == "spread":
@@ -918,7 +955,8 @@ def _schematic(tile: TileDef, cell_px: int) -> Image.Image:
 
 
 def render_png(layout: Layout, ts: TileSet, out_path: str, cell_px: int, caption: str,
-               number_rooms: bool = False, items: Optional[Items] = None) -> List[str]:
+               number_rooms: bool = False, items: Optional[Items] = None,
+               marker_types: Optional[Dict[str, MarkerType]] = None) -> List[str]:
     """Render the layout. Returns the labels of tiles drawn as schematics (image missing)."""
     margin = max(24, cell_px // 3)
     font_px = max(12, round(cell_px * 0.09))
@@ -972,7 +1010,7 @@ def render_png(layout: Layout, ts: TileSet, out_path: str, cell_px: int, caption
             if text:
                 d.text((cx, cy), text, fill=(255, 255, 255), font=_font(max(10, round(r * 1.3))), anchor="mm")
 
-        types = ts.placement.types
+        types = marker_types or {}
         drawn = ([Marker(*items.start, "start")] if items.start and items.draw_start else []) + items.markers
         for m in drawn:
             mt = types[m.type]
@@ -1063,8 +1101,11 @@ def main() -> None:
     ap.add_argument("--number-rooms", action=argparse.BooleanOptionalAction, default=None,
                     help="Prefix each tile's badge with its order from the entrance. Only meaningful when "
                          "the dungeon is a single path (default: from the tile set, else off).")
+    ap.add_argument("--rules",    default=None,
+                    help="Game rules: a name from rules/ (e.g. linear) or a path to a JSON file "
+                         "(default: the tile set's \"rules\", else default).")
     ap.add_argument("--placement", choices=PLACEMENT_STRATEGIES, default=None,
-                    help="Item placement strategy (default: from the tile set, else standard).")
+                    help="Item placement strategy (default: from the rules file).")
     ap.add_argument("--n",        type=int, default=3,    help="Number of dungeons to generate (default: 3).")
     ap.add_argument("--seed",     type=int, default=None, help="Generate one specific dungeon by seed.")
     ap.add_argument("--cell-px",  type=int, default=300,  help="Pixels per grid square in the PNG (default: 300).")
@@ -1073,6 +1114,11 @@ def main() -> None:
     args = ap.parse_args()
 
     ts = load_tileset(resolve_tileset_path(args.tileset))
+    rules_path = resolve_rules_path(args.rules) if args.rules else resolve_rules_path(ts.rules, ts.path)
+    rules = load_rules(rules_path, frozenset().union(*(t.tags for t in ts.tiles.values())))
+    strategy = args.placement or rules.strategy
+    check_strategy(rules, strategy, os.path.basename(rules_path))
+    rules_name = os.path.splitext(os.path.basename(rules_path))[0]
     width = args.width or ts.width
     height = args.height or ts.height
     border = parse_border(args.border_openings) if args.border_openings is not None else ts.border
@@ -1102,13 +1148,13 @@ def main() -> None:
             print(f"Seed {seed}: no layout found, skipping. "
                   f"If this keeps happening, the tiles may not be able to fill {width}x{height} with these settings.")
             continue
-        caption = f"{ts.name}  ·  Seed {seed}  ·  {len(layout.placements)} rooms  ·  {tile_counts(layout)}"
+        caption = (f"{ts.name}  ·  Rules {rules_name}  ·  Seed {seed}  ·  "
+                   f"{len(layout.placements)} rooms  ·  {tile_counts(layout)}")
         base = os.path.join(out_dir, f"{slug}_dungeon_{seed}")
         number_rooms = ts.number_rooms if args.number_rooms is None else args.number_rooms
         # Own random stream, so changing item placement never changes the layout for a seed.
-        strategy = args.placement or ts.placement.strategy
-        items = PLACEMENT_STRATEGIES[strategy](SpaceMap(layout), random.Random(f"{seed}:items"), ts.placement)
-        missing = render_png(layout, ts, base + ".png", args.cell_px, caption, number_rooms, items)
+        items = PLACEMENT_STRATEGIES[strategy](SpaceMap(layout, ts), random.Random(f"{seed}:items"), rules)
+        missing = render_png(layout, ts, base + ".png", args.cell_px, caption, number_rooms, items, rules.types)
         print(f"Saved: {base}.png")
         new = [m for m in missing if m not in warned]
         if new:

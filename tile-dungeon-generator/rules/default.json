@@ -1,0 +1,23 @@
+{
+  "_about": [
+    "Default game rules, used by tile sets that don't name their own.",
+    "distance = [min, max] tiles walked from 'from' (default: the start); null = no max.",
+    "Rule fields on a marker type (distance, prefer, pick...) are defaults for its rules; a rule's own value wins.",
+    "prefer: tile tags (and off_route/dead_end), tried in order; tagged tiles without a marker come first."
+  ],
+  "strategy": "standard",
+  "marker_types": {
+    "start":     {"color": "#2850dc"},
+    "console":   {"color": "#28b450", "objective": true},
+    "spawn":     {"color": "#dc2828"},
+    "loot":      {"color": "#dc8c28", "size": "small"},
+    "discovery": {"color": "#dc8c28", "size": "small", "label": "?"}
+  },
+  "markers": [
+    {"type": "console", "distance": [3, null]},
+    {"type": "spawn", "distance": [2, 4]},
+    {"type": "spawn", "count": 2, "distance": [2, null], "pick": "spread"},
+    {"type": "loot", "count": 3, "pick": "spread", "prefer": ["off_route", "dead_end"],
+     "spread_from": ["start", "spawn", "loot"]}
+  ]
+}

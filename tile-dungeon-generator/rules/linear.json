@@ -1,17 +1,20 @@
 {
   "_about": [
     "Rules for single-path (linear) dungeons: the player starts at IN.",
-    "distance = [min, max] tiles walked from 'from' (default: the start); null = no max.",
+    "distance = [min, max] rooms walked from 'from' (default: the start); null = no max.",
     "Rule fields on a marker type (distance, prefer, pick...) are defaults for its rules; a rule's own value wins.",
-    "prefer: tile tags (and off_route/dead_end), tried in order; tagged tiles without a marker come first."
+    "prefer: off_route, dead_end, junction, big or room tags, tried in order; tagged rooms without a marker come first.",
+    "Every slot the rules leave empty gets a '?' event, so no room big enough to hold a slot is left empty."
   ],
   "strategy": "standard",
+  "fill": "event",
   "marker_types": {
     "start":     {"color": "#2850dc"},
-    "console":   {"color": "#28b450", "size": "small", "objective": true, "distance": [1, 16], "prefer": ["large"]},
-    "spawn":     {"color": "#dc2828", "size": "small", "distance": [1, 16], "prefer": ["small", "large"]},
-    "loot":      {"color": "#dc8c28", "size": "small", "distance": [0, 16], "prefer": ["small", "medium"]},
-    "discovery": {"color": "#dc8c28", "size": "small", "label": "?"}
+    "console":   {"color": "#28b450", "size": "small", "objective": true, "distance": [1, 16], "prefer": ["large"], "label": "C"},
+    "spawn":     {"color": "#dc2828", "size": "small", "distance": [1, 16], "prefer": ["small", "medium"], "label": "S"},
+    "loot":      {"color": "#dc8c28", "size": "small", "distance": [0, 16], "prefer": ["small", "medium"], "label": "L"},
+    "discovery": {"color": "#dc8c28", "size": "small", "label": "?"},
+    "event":     {"color": "#8c50c8", "size": "small", "label": "?"}
   },
   "markers": [
     {"type": "console", "count": 1, "distance": [3, null], "pick": "random"},

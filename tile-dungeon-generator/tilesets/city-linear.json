@@ -1,13 +1,13 @@
 {
   "_about": [
-    "Tiles with centred connectors, each with exactly two openings, so every dungeon is a single path.",
-    "Three sizes: small (1x1), medium (1x2) and large (2x2).",
+    "Rooms with centred connectors, each with exactly two openings, so every dungeon is a single path.",
+    "Three sizes, in tiles: small (1x1), medium (1x2) and large (2x2).",
     "Small: I (straight) and L (corner).",
-    "Medium: I, L (north + east on the bottom square), J (mirror of L), S (east on the top square, west on the bottom) and Z (mirror of S).",
-    "Large: L (north on the top-left square, east on the bottom-right), J (north on the top-right, west on the bottom-left; the same shape as L turned a quarter, with its own art),",
+    "Medium: I, L (north + east on the bottom tile), J (mirror of L), S (east on the top tile, west on the bottom) and Z (mirror of S).",
+    "Large: L (north on the top-left tile, east on the bottom-right)",
     "S (north on the top-left, south on the bottom-right) and Z (mirror of S).",
-    "Each tile is one shape; its 'images' are art variations, spread evenly over the tiles placed.",
-    "No 'copies', so each tile can be used any number of times."
+    "Each room is one shape; its 'images' are art variations, spread evenly over the rooms placed.",
+    "No 'copies', so each room can be used any number of times."
   ],
   "name": "CityLinear",
   "image_dir": "City-linear",
@@ -19,7 +19,7 @@
     "medium": {"min": 1, "max": 2}
   },
   "rules": "linear",
-  "tiles": {
+  "rooms": {
     "SM_I": {"openings": "NS", "images": ["SM_I_01.png", "SM_I_02.png", "SM_I_03.png", "SM_I_04.png"], "tags": ["small"]},
     "SM_L": {"openings": "NE", "images": ["SM_L_01.png", "SM_L_02.png", "SM_L_03.png", "SM_L_04.png", "SM_L_05.png"], "tags": ["small"]},
     "MD_I": {"size": [1, 2], "openings": [[0, 0, "N"], [0, 1, "S"]], "images": ["MD_I_01.png", "MD_I_02.png"], "tags": ["medium"]},

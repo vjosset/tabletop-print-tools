@@ -1,9 +1,9 @@
 {
   "_about": [
-    "Test tiles with centred connectors: the dungeon-generator shapes as 1x1 squares, a 1x2 straight corridor and a 2x2 room.",
-    "Large_X has one opening per side, each on a different square (a pinwheel), and is limited to one per dungeon.",
-    "No 'copies', so each tile can be used any number of times.",
-    "Weights for the squares match dungeon-generator's defaults; Medium_I uses the same weight as I."
+    "Test rooms with centred connectors: the dungeon-generator shapes as 1x1 rooms, a 1x2 straight corridor and a 2x2 room.",
+    "Large_X has one opening per side, each on a different tile (a pinwheel), and is limited to one per dungeon.",
+    "No 'copies', so each room can be used any number of times.",
+    "Weights for the 1x1 rooms match dungeon-generator's defaults; Medium_I uses the same weight as I."
   ],
   "name": "Test01",
   "image_dir": "test01",
@@ -13,7 +13,7 @@
     "Large_X": {"max": 1, "min": 1},
     "Medium_I": {"min": 1}
   },
-  "tiles": {
+  "rooms": {
     "X": {"openings": "NESW", "image": "X_01.png", "weight": 4},
     "T": {"openings": "NES",  "image": "T_01.png", "weight": 5},
     "L": {"openings": "NE",   "image": "L_01.png", "weight": 1},

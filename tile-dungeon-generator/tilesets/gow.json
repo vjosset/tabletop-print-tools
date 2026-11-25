@@ -1,7 +1,7 @@
 {
   "_about": [
-    "Gears of War board game (2011) tiles. One entry per tile side, keyed by the ID printed on the tile.",
-    "Both sides of a physical tile share a 'piece', so only one side is used per dungeon.",
+    "Gears of War board game (2011). One room per side of each double-sided piece, keyed by the ID printed on it.",
+    "Both sides of a piece share its 'piece' value, so only one side is used per dungeon.",
     "Scans live in tilesets/gow/ and are git-ignored: they're published game art, never commit them."
   ],
   "name": "GoW",
@@ -10,10 +10,10 @@
   "border_openings": 2,
   "number_rooms": true,
   "limits": {
-    "medium": {"max": 2},
-    "boss": {"min": 0, "max": 1}
+    "medium": {"min": 1, "max": 2},
+    "large": {"min": 1, "max": 1}
   },
-  "tiles": {
+  "rooms": {
     "1A": {"piece": "1", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "W"]], "image": "Tile1A.png", "tags": ["small"]},
     "1B": {"piece": "1", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "S"]], "image": "Tile1B.png", "tags": ["small"]},
     "2A": {"piece": "2", "copies": 1, "size": [1, 1], "openings": [[0, 0, "N"], [0, 0, "S"]], "image": "Tile2A.png", "tags": ["small"]},

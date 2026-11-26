@@ -29,8 +29,11 @@ Thumbs.db
 
 **/incoming/
 **/incoming_done/
+**/incoming*
 
 # Outputs (build lists)
 gow-dungeon-generator/output/
 dungeon-generator/output/
 tile-dungeon-generator/output/
+**/output*
+**/old

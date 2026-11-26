@@ -8,9 +8,16 @@ target_value = 118       # mean brightness, 0-255 (theme mid-tone)
 target_contrast = 16     # brightness spread; lower = calmer floor
 tint = [122, 113, 98]    # theme palette colour
 tint_amount = 0.55       # 0 = texture's own colour, 1 = fully palette
-normal_strength = 2.0    # overhead-light shading from the normal map
+relief = 0.75            # overall strength of all shading
+normal_strength = 2.0    # lamp shading from the normal map
+edge_strength = 0.35     # ridges lighter, creases darker
+light_height = 2.0       # lamp height above the image centre, in image widths; lower = stronger
+falloff = 0.0            # darkening towards the image edges; 0 = off
 cavity_strength = 1.0    # grime in lows, wear on highs (displacement)
 ao_strength = 0.6        # AO map, or AO derived from displacement
+emissive_strength = 0.5  # lights from emissive maps; 0 = off
+glow = 0.5               # halo around lights; 0 = none
+transparent = true       # Opacity map -> transparent PNG; false = solid
 # Grid grooves are a command-line option: --grid 640
 
 # Example override:
@@ -43,5 +50,13 @@ cells = 10
 cells_per_square = 3
 
 [Concrete031]
+cells = 4
+cells_per_square = 1
+
+[Sci_Fi_Metal_Panel_002]
+cells = 4
+cells_per_square = 1
+
+[Sci_Fi_Metal_Panel_005]
 cells = 4
 cells_per_square = 1

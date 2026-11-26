@@ -37,7 +37,7 @@ python main.py --tileset <name or path> [options]
 | `--width` | `5` | Dungeon width in tiles |
 | `--height` | `4` | Dungeon height in tiles |
 | `--number-rooms` | off | Prefix each room's badge with its order from the entrance (see Output) |
-| `--no-markers` | off | Leave out the goal, start and `?` markers |
+| `--no-markers` | off | Leave out the goal and `?` markers |
 | `--n` | `3` | Number of dungeons to generate |
 | `--seed` | random | Generate one specific dungeon (use the same tile set, size and `--linear` as the original run) |
 | `--tile-px` | `300` | Pixels per tile in the PNG |
@@ -58,7 +58,7 @@ python main.py --tileset gow --linear --number-rooms
 
 ### Output
 
-One **`<tileset>_<branching|linear>_dungeon_{SEED}.png`** per dungeon, written to `output/<tileset>/` in this folder. Each room has a badge with its room ID (e.g. `17B`), or, for a room with several images, the name of the image used (e.g. `SM_I_02`), so you know which physical room to put down. With `--number-rooms`, the badge also shows the room's order from the entrance (e.g. `6 · 17B`). Rooms are numbered breadth-first from the entrance, so the numbers are only a route on a linear map. On a linear map, the openings on the map edge are marked **IN** and **OUT** outside the map. The caption gives the tile set, kind of map, seed, room count and how many of each room the map uses.
+One **`<tileset>_<branching|linear>_dungeon_{SEED}.png`** per dungeon, written to `output/<tileset>/` in this folder. Each room has a badge with its room ID (e.g. `17B`), or, for a room with several images, the name of the image used (e.g. `SM_I_02`), so you know which physical room to put down. With `--number-rooms`, the badge also shows the room's order from the entrance (e.g. `6 · 17B`). Rooms are numbered breadth-first from the entrance, so the numbers are only a route on a linear map. The openings on the map edge are marked **IN** and **OUT** outside the map. The caption gives the tile set, kind of map, seed, room count and how many of each room the map uses.
 
 Rooms whose image is missing are drawn as a schematic: a dark box with its openings and ID.
 
@@ -66,10 +66,10 @@ Rooms whose image is missing are drawn as a schematic: a dark box with its openi
 
 ## Kinds of map
 
-Every map has exactly **one large room** (2×2) and **one or two medium rooms** (1×2). Rooms with a single opening (dead ends) are never used.
+Every map has exactly **one large room** (2×2) and **one or two medium rooms** (1×2). Rooms with a single opening (dead ends) are never used. Every map has exactly two openings on the map edge: **IN**, where the players enter, and **OUT**, the exit. IN is never in the large room; OUT may be.
 
-- **Branching** (default): any room with two or more openings, and no opening on the map edge. Two straight rooms (`I` shapes) never join end to end, so there are no long corridors. A tile set needs rooms with three or more openings to branch; `gow` has none, so it only makes linear maps.
-- **Linear** (`--linear`): only rooms with exactly two openings, and exactly two openings on the map edge, IN and OUT. Every room then has one way in and one way out, so the map is a single path from IN to OUT. IN is never in the large room when the other end isn't, so the goal isn't at the start.
+- **Branching** (default): any room with two or more openings. IN is at a random spot on the map edge, and OUT at the spot mirrored through the map's centre (IN on the east edge, top row → OUT on the west edge, bottom row), so they're as far apart as they can be. Two straight rooms (`I` shapes) never join end to end, so there are no long corridors. A tile set needs rooms with three or more openings to branch; `gow` has none, so it only makes linear maps.
+- **Linear** (`--linear`): only rooms with exactly two openings. Every room then has one way in and one way out, so the map is a single path through every room, and its two ends are IN and OUT. Where they sit doesn't matter: the route is always the whole map.
 
 Rooms are tried in a random order weighted by shape, like `dungeon-generator`: four openings 4, three openings 5, a straight 2, any other two-opening room 1. Weights only set the order rooms are tried in, so the actual counts don't follow them closely.
 
@@ -81,10 +81,9 @@ Each tile is 3×3 squares, all floor. Each marker sits on a tile's centre square
 
 Markers go on **slots**: every other tile, in a checkerboard pattern. So no two markers are on tiles that share an edge, a medium room always has one slot and the large room two.
 
+The players start at **IN**. The tile they enter has no marker, and the pattern runs from there, so the tiles after it are slots.
+
 - **Goal** (green **G**): on one of the large room's two slots, picked at random.
-- **Player start**:
-  - Linear map: the players start at **IN**. The tile they enter has no marker, and the pattern runs from there, so the tiles after it are slots.
-  - Branching map: either checkerboard colour is used, at random. A blue marker on one slot shows the start: the slot farthest from the large room (counting rooms walked through), never in it.
 - **?** (orange): every other slot, discovered during play.
 
 Markers have their own random stream, so a seed gives the same layout with or without `--no-markers`.

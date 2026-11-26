@@ -1,25 +1,18 @@
 {
   "_about": [
     "Test rooms with centred connectors: the dungeon-generator shapes as 1x1 rooms, a 1x2 straight corridor and a 2x2 room.",
-    "Large_X has one opening per side, each on a different tile (a pinwheel), and is limited to one per dungeon.",
-    "No 'copies', so each room can be used any number of times.",
-    "Weights for the 1x1 rooms match dungeon-generator's defaults; Medium_I uses the same weight as I."
+    "Large_X has two openings on different tiles (top-left north, bottom-right east).",
+    "No 'copies', so each room can be used any number of times."
   ],
   "name": "Test01",
   "image_dir": "test01",
-  "grid": {"width": 5, "height": 4},
-  "border_openings": 2,
-  "limits": {
-    "Large_X": {"max": 1, "min": 1},
-    "Medium_I": {"min": 1}
-  },
   "rooms": {
-    "X": {"openings": "NESW", "image": "X_01.png", "weight": 4},
-    "T": {"openings": "NES",  "image": "T_01.png", "weight": 5},
-    "L": {"openings": "NE",   "image": "L_01.png", "weight": 1},
-    "I": {"openings": "NS",   "image": "I_01.png", "weight": 2},
-    "O": {"openings": "NESW", "image": "O_01.png", "weight": 4},
-    "Medium_I": {"size": [1, 2], "openings": [[0, 0, "N"], [0, 1, "S"]], "image": "Medium_I_01.png", "weight": 2},
-    "Large_X":  {"size": [2, 2], "openings": [[0, 0, "N"], [1, 1, "E"]], "image": "Large_X_01.png", "weight": 1}
+    "X": {"openings": "NESW", "image": "X_01.png"},
+    "T": {"openings": "NES",  "image": "T_01.png"},
+    "L": {"openings": "NE",   "image": "L_01.png"},
+    "I": {"openings": "NS",   "image": "I_01.png"},
+    "O": {"openings": "NESW", "image": "O_01.png"},
+    "Medium_I": {"size": [1, 2], "openings": [[0, 0, "N"], [0, 1, "S"]], "image": "Medium_I_01.png"},
+    "Large_X":  {"size": [2, 2], "openings": [[0, 0, "N"], [1, 1, "E"]], "image": "Large_X_01.png"}
   }
 }

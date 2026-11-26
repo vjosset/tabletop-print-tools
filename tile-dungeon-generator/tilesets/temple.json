@@ -1,39 +1,27 @@
 {
   "_about": [
-    "Rooms with centred connectors for branching dungeons.",
-    "Three sizes, in tiles: small (1x1), medium (1x2) and large (2x2).",
-    "Small: D (dead end, one opening, north), I (straight), L (corner), T (east, south and west) and X (all four sides).",
+    "Rooms with centred connectors. Three sizes, in tiles: small (1x1), medium (1x2) and large (2x2).",
+    "Small: D (dead end, one opening, north; never used), I (straight), L (corner), T (east, south and west) and X (all four sides).",
     "Medium: I, L (north + east on the bottom tile), J (mirror of L), S (east on the top tile, west on the bottom) and Z (mirror of S).",
     "Large: L (north on the top-left tile, east on the bottom-right), S (north on the top-left, south on the bottom-right) and Z (mirror of S).",
     "Each room is one shape; its 'images' are art variations, spread evenly over the rooms placed.",
-    "No 'copies', so each room can be used any number of times.",
-    "Weights match dungeon-generator's: X 4, T 5, I 2, L 1 (MD_I like I; the other mediums and larges 1). D is 0.25: fewer dead ends, so fewer that miss a marker slot.",
-    "no_connect keeps straights (SM_I, MD_I) from joining end to end into long corridors."
+    "No 'copies', so each room can be used any number of times. Linear maps (--linear) use the two-opening rooms."
   ],
   "name": "Temple",
   "image_dir": "Temple",
-  "grid": {"width": 5, "height": 4},
-  "border_openings": 0,
-  "number_rooms": false,
-  "limits": {
-    "large": {"min": 1, "max": 1},
-    "medium": {"min": 1, "max": 1}
-  },
-  "no_connect": [["straight", "straight"]],
-  "rules": "default",
   "rooms": {
-    "SM_D": {"openings": "N", "images": ["SM_D_01.png"], "tags": ["small"], "weight": 0.25},
-    "SM_I": {"openings": "NS", "images": ["SM_I_01.png", "SM_I_02.png"], "tags": ["small", "straight"], "weight": 2},
-    "SM_L": {"openings": "NE", "images": ["SM_L_01.png", "SM_L_02.png"], "tags": ["small"], "weight": 1},
-    "SM_T": {"openings": "ESW", "images": ["SM_T_01.png", "SM_T_02.png"], "tags": ["small"], "weight": 5},
-    "SM_X": {"openings": "NESW", "images": ["SM_X_01.png", "SM_X_02.png"], "tags": ["small"], "weight": 4},
-    "MD_I": {"size": [1, 2], "openings": [[0, 0, "N"], [0, 1, "S"]], "images": ["MD_I_01.png", "MD_I_02.png"], "tags": ["medium", "straight"], "weight": 2},
-    "MD_L": {"size": [1, 2], "openings": [[0, 0, "N"], [0, 1, "E"]], "images": ["MD_L_01.png", "MD_L_02.png"], "tags": ["medium"]},
-    "MD_J": {"size": [1, 2], "openings": [[0, 0, "N"], [0, 1, "W"]], "images": ["MD_J_01.png", "MD_J_02.png"], "tags": ["medium"]},
-    "MD_S": {"size": [1, 2], "openings": [[0, 0, "E"], [0, 1, "W"]], "images": ["MD_S_01.png"], "tags": ["medium"]},
-    "MD_Z": {"size": [1, 2], "openings": [[0, 0, "W"], [0, 1, "E"]], "images": ["MD_Z_01.png"], "tags": ["medium"]},
-    "LG_L": {"size": [2, 2], "openings": [[0, 0, "N"], [1, 1, "E"]], "images": ["LG_L_01.png", "LG_L_02.png"], "tags": ["large"]},
-    "LG_S": {"size": [2, 2], "openings": [[0, 0, "N"], [1, 1, "S"]], "images": ["LG_S_01.png"], "tags": ["large"]},
-    "LG_Z": {"size": [2, 2], "openings": [[1, 0, "N"], [0, 1, "S"]], "images": ["LG_Z_01.png"], "tags": ["large"]}
+    "SM_D": {"openings": "N", "images": ["SM_D_01.png"]},
+    "SM_I": {"openings": "NS", "images": ["SM_I_01.png", "SM_I_02.png"]},
+    "SM_L": {"openings": "NE", "images": ["SM_L_01.png", "SM_L_02.png"]},
+    "SM_T": {"openings": "ESW", "images": ["SM_T_01.png", "SM_T_02.png"]},
+    "SM_X": {"openings": "NESW", "images": ["SM_X_01.png", "SM_X_02.png"]},
+    "MD_I": {"size": [1, 2], "openings": [[0, 0, "N"], [0, 1, "S"]], "images": ["MD_I_01.png", "MD_I_02.png"]},
+    "MD_L": {"size": [1, 2], "openings": [[0, 0, "N"], [0, 1, "E"]], "images": ["MD_L_01.png", "MD_L_02.png"]},
+    "MD_J": {"size": [1, 2], "openings": [[0, 0, "N"], [0, 1, "W"]], "images": ["MD_J_01.png", "MD_J_02.png"]},
+    "MD_S": {"size": [1, 2], "openings": [[0, 0, "E"], [0, 1, "W"]], "images": ["MD_S_01.png"]},
+    "MD_Z": {"size": [1, 2], "openings": [[0, 0, "W"], [0, 1, "E"]], "images": ["MD_Z_01.png"]},
+    "LG_L": {"size": [2, 2], "openings": [[0, 0, "N"], [1, 1, "E"]], "images": ["LG_L_01.png", "LG_L_02.png"]},
+    "LG_S": {"size": [2, 2], "openings": [[0, 0, "N"], [1, 1, "S"]], "images": ["LG_S_01.png"]},
+    "LG_Z": {"size": [2, 2], "openings": [[1, 0, "N"], [0, 1, "S"]], "images": ["LG_Z_01.png"]}
   }
 }

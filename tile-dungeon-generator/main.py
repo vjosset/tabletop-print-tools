@@ -5,23 +5,35 @@ Terms: a room is one tile image (one physical piece); a tile is one unit of the
 map grid (a small room covers 1 tile, a 2x2 room 4); a square is one of the
 SUB x SUB subdivisions of a tile, where a marker sits.
 
-A tile set lists the available rooms: their size in tiles, which edges of which
-tiles are open, their image(s), how many copies exist and optional tags. The
-generator fills a W x H grid of tiles with those rooms so that:
+A tile set only lists the available rooms: their size in tiles, which edges of
+which tiles are open, their image(s) and how many copies exist. Everything else
+is decided here. The generator fills a W x H grid of tiles with those rooms so that:
 
   - there is no empty space,
   - every opening meets an opening on the neighbouring room (and walls meet walls),
-  - the number of openings facing the map edge is within the allowed range,
   - every room is reachable from every other room,
-  - copy counts and per-tag min/max limits are respected.
+  - there is exactly one large room (2x2) and one or two medium rooms (1x2),
+  - copy counts are respected.
 
-Rooms may be any rectangular size (1x1, 2x1, 2x2...) and are rotated freely.
+Two kinds of map:
+
+  - branching (default): rooms with two or more openings; two straights never join
+    end to end. IN is at a random spot on the map edge and OUT at the spot mirrored
+    through the map's centre, as far apart as they can be.
+  - linear (--linear): only rooms with exactly two openings, so the map is a single
+    path from IN to OUT, through every room.
+
+Both have exactly two openings facing the map edge, IN and OUT, and IN is never in
+the large room.
+
+Rooms with one opening (dead ends) are never used. Rooms are rotated freely and
+picked with fixed weights by shape (see shape_weight).
 
 A room with several images is one shape to the solver; once the layout is
 solved, its images are spread evenly over the copies placed.
 
-Game markers (start, console, spawns, loot...) are placed by a rules file in
-rules/. This script only interprets the rules; it defines none of its own.
+Markers go on a checkerboard of tiles, starting from the tile after IN: one in the
+large room is the goal and the rest are "?" found in play.
 
 Output: one {tileset}_dungeon_{SEED}.png per dungeon, drawn from the room
 images (or a schematic for rooms whose image is missing).
@@ -42,7 +54,6 @@ from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TILESETS_DIR = os.path.join(HERE, "tilesets")
-RULES_DIR = os.path.join(HERE, "rules")
 DEFAULT_OUT_DIR = os.path.join(HERE, "output")
 
 DIRS: Dict[str, Tuple[int, int]] = {"N": (0, -1), "E": (1, 0), "S": (0, 1), "W": (-1, 0)}
@@ -72,18 +83,48 @@ class RoomDef:
     size: Tuple[int, int]
     openings: List[Opening]
     images: List[Art]             # empty = drawn as a schematic
-    weight: float
-    tags: FrozenSet[str]          # includes the room's own id
 
     @property
     def area(self) -> int:
         return self.size[0] * self.size[1]
 
+    @property
+    def size_class(self) -> str:
+        return {(1, 1): "small", (1, 2): "medium", (2, 2): "large"}.get(tuple(sorted(self.size)), "other")
 
-@dataclass
-class Limit:
-    min: int = 0
-    max: Optional[int] = None
+    @property
+    def straight(self) -> bool:
+        """Two openings facing each other across the room, in line (I shapes)."""
+        if len(self.openings) != 2:
+            return False
+        (x1, y1, e1), (x2, y2, e2) = self.openings
+        return ({e1, e2} == {"N", "S"} and x1 == x2) or ({e1, e2} == {"E", "W"} and y1 == y2)
+
+    @property
+    def tags(self) -> FrozenSet[str]:
+        """What the solver's limits and no-connect rule look at."""
+        return frozenset([self.size_class] + (["straight"] if self.straight else []))
+
+    @property
+    def weight(self) -> float:
+        return shape_weight(self)
+
+
+def shape_weight(room: RoomDef) -> float:
+    """How often the solver tries a room, by its shape (dungeon-generator's weights:
+    X 4, T 5, I 2, L 1). Rooms with one opening are never used."""
+    n = len(room.openings)
+    if n >= 4:
+        return 4
+    if n == 3:
+        return 5
+    if n == 2:
+        return 2 if room.straight else 1
+    return 0
+
+
+# Every map has exactly one large room and one or two medium rooms: size class -> (min, max).
+LIMITS: Dict[str, Tuple[int, int]] = {"large": (1, 1), "medium": (1, 2)}
 
 
 @dataclass
@@ -92,26 +133,11 @@ class TileSet:
     path: str
     rooms: Dict[str, RoomDef]
     piece_copies: Dict[str, Optional[int]]
-    width: int
-    height: int
-    border: Tuple[int, int]       # allowed number of openings facing the map edge
-    limits: Dict[str, Limit]
-    number_rooms: bool = False    # badge each room with its order from the entrance (only meaningful for single-path sets)
-    rules: str = "default"        # rules file (name in rules/ or path) used when --rules isn't given
-    no_connect: List[Tuple[str, str]] = field(default_factory=list)   # tag/ID pairs never joined through an opening
 
-
-def parse_border(value) -> Tuple[int, int]:
-    """2 -> (2, 2); "0-2" -> (0, 2); [0, 2] -> (0, 2)."""
-    if isinstance(value, int):
-        return value, value
-    if isinstance(value, (list, tuple)) and len(value) == 2:
-        return int(value[0]), int(value[1])
-    s = str(value).strip()
-    if "-" in s:
-        a, b = s.split("-", 1)
-        return int(a), int(b)
-    return int(s), int(s)
+    def usable(self, linear: bool) -> List[RoomDef]:
+        """Linear maps use only rooms with exactly two openings; branching maps any with two or more."""
+        return [r for r in self.rooms.values()
+                if (len(r.openings) == 2 if linear else len(r.openings) >= 2)]
 
 
 def _parse_openings(rid: str, raw, w: int, h: int) -> List[Opening]:
@@ -157,45 +183,22 @@ def _parse_images(rid: str, t: dict, image_dir: str) -> List[Art]:
             for f, c in entries]
 
 
-def _resolve_json(arg: str, folder: str, what: str, relative_to: Optional[str] = None) -> str:
-    """Accept a file path (relative to the working directory, or to `relative_to`),
-    or a bare name of a file in `folder` (with or without .json)."""
-    candidates = [arg, arg + ".json"]
-    if relative_to:
-        candidates += [os.path.join(relative_to, arg), os.path.join(relative_to, arg + ".json")]
-    candidates += [os.path.join(folder, arg), os.path.join(folder, arg + ".json")]
-    for c in candidates:
+def resolve_tileset_path(arg: str) -> str:
+    """A file path, or the bare name of a file in tilesets/ (with or without .json)."""
+    for c in (arg, arg + ".json", os.path.join(TILESETS_DIR, arg), os.path.join(TILESETS_DIR, arg + ".json")):
         if os.path.isfile(c):
             return os.path.abspath(c)
-    available = sorted(f[:-5] for f in os.listdir(folder) if f.endswith(".json")) \
-        if os.path.isdir(folder) else []
-    raise SystemExit(f"{what} {arg!r} not found. "
-                     f"Available in {os.path.basename(folder)}/: {', '.join(available) or 'none'}.")
-
-
-def resolve_tileset_path(arg: str) -> str:
-    return _resolve_json(arg, TILESETS_DIR, "Tile set")
-
-
-def resolve_rules_path(arg: str, tileset_path: Optional[str] = None) -> str:
-    """A rules file named on the command line or in a tile set (paths in a tile set
-    may be relative to it)."""
-    return _resolve_json(arg, RULES_DIR, "Rules file",
-                         os.path.dirname(tileset_path) if tileset_path else None)
+    available = sorted(f[:-5] for f in os.listdir(TILESETS_DIR) if f.endswith(".json"))
+    raise SystemExit(f"Tile set {arg!r} not found. Available in tilesets/: {', '.join(available) or 'none'}.")
 
 
 def load_tileset(path: str) -> TileSet:
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
-    base = os.path.dirname(path)
-    image_dir = os.path.join(base, data.get("image_dir", "."))
-    grid = data.get("grid", {})
-
+    image_dir = os.path.join(os.path.dirname(path), data.get("image_dir", "."))
     rooms: Dict[str, RoomDef] = {}
     piece_copies: Dict[str, Optional[int]] = {}
-    if "rooms" in data and "tiles" in data:
-        raise SystemExit(f"{os.path.basename(path)}: use either \"rooms\" or the older \"tiles\", not both.")
-    for rid, t in data.get("rooms", data.get("tiles", {})).items():
+    for rid, t in data.get("rooms", {}).items():
         if rid.startswith("_"):
             continue
         w, h = (int(t["size"][0]), int(t["size"][1])) if "size" in t else (1, 1)
@@ -214,8 +217,6 @@ def load_tileset(path: str) -> TileSet:
             size=(w, h),
             openings=_parse_openings(rid, t.get("openings", []), w, h),
             images=images,
-            weight=float(t.get("weight", 1)),
-            tags=frozenset([rid, *t.get("tags", [])]),
         )
         # Faces of one piece share its copies; unlimited wins if any face says so.
         if piece in piece_copies and (piece_copies[piece] is None or copies is None):
@@ -223,30 +224,11 @@ def load_tileset(path: str) -> TileSet:
         else:
             piece_copies[piece] = copies if piece not in piece_copies else max(piece_copies[piece], copies)
 
-    limits = {tag: Limit(int(v.get("min", 0)), None if v.get("max") is None else int(v["max"]))
-              for tag, v in data.get("limits", {}).items() if not tag.startswith("_")}
-    if "placement" in data:
-        raise SystemExit(f"{os.path.basename(path)}: the \"placement\" section now lives in its own file in "
-                         f"rules/. Move it there and point to it with \"rules\": \"<name>\".")
-    known = set().union(*(r.tags for r in rooms.values()))
-    no_connect: List[Tuple[str, str]] = []
-    for pair in data.get("no_connect", []):
-        if not (isinstance(pair, list) and len(pair) == 2 and all(p in known for p in pair)):
-            raise SystemExit(f"{os.path.basename(path)}: each \"no_connect\" entry must be a pair of room "
-                             f"tags or IDs, got {pair!r}.")
-        no_connect.append((pair[0], pair[1]))
     return TileSet(
         name=data.get("name") or os.path.splitext(os.path.basename(path))[0],
         path=path,
         rooms=rooms,
         piece_copies=piece_copies,
-        width=int(grid.get("width", 5)),
-        height=int(grid.get("height", 4)),
-        border=parse_border(data.get("border_openings", 0)),
-        limits=limits,
-        number_rooms=bool(data.get("number_rooms", False)),
-        rules=str(data.get("rules", "default")),
-        no_connect=no_connect,
     )
 
 
@@ -319,35 +301,39 @@ class _OutOfBudget(Exception):
 class Solver:
     """Randomised backtracking: always fill the first empty tile (row-major)."""
 
-    def __init__(self, ts: TileSet, width: int, height: int, border: Tuple[int, int],
-                 limits: Dict[str, Limit], rng: random.Random, step_budget: int = 20000):
+    def __init__(self, ts: TileSet, width: int, height: int, linear: bool,
+                 rng: random.Random, step_budget: int = 20000):
         self.ts = ts
         self.W, self.H = width, height
-        self.border_min, self.border_max = border
-        self.limits = limits
+        self.border_min = self.border_max = 2                    # IN and OUT
+        self.linear = linear
+        self.limits = LIMITS
         self.rng = rng
         self.step_budget = step_budget
-        self.variants = {rid: build_variants(t) for rid, t in ts.rooms.items()}
-        self.rooms = [t for t in ts.rooms.values() if t.weight > 0]
-        # Tags of each room that have a max, checked on every step.
-        self.max_tags = {t.room_id: [tag for tag in sorted(t.tags)
-                                     if tag in limits and limits[tag].max is not None]
-                         for t in self.rooms}
-        # For each tag with a minimum: the smallest room area carrying it (for pruning).
+        self.rooms = ts.usable(linear)
+        self.variants = {t.room_id: build_variants(t) for t in self.rooms}
+        # Size classes of each room that have a limit, checked on every step.
+        self.max_tags = {t.room_id: [tag for tag in sorted(t.tags) if tag in LIMITS] for t in self.rooms}
+        # For each size class with a minimum: the smallest room area in it (for pruning).
         self.min_tag_area = {
-            tag: min((t.area for t in ts.rooms.values() if tag in t.tags), default=math.inf)
-            for tag, lim in limits.items() if lim.min > 0}
-        # Pairs of room IDs that may not be joined through an opening, both ways round.
-        self.no_connect = set()
-        for ta, tb in ts.no_connect:
-            for a in ts.rooms.values():
-                for b in ts.rooms.values():
-                    if ta in a.tags and tb in b.tags:
-                        self.no_connect |= {(a.room_id, b.room_id), (b.room_id, a.room_id)}
+            tag: min((t.area for t in self.rooms if tag in t.tags), default=math.inf)
+            for tag, (lo, _) in LIMITS.items() if lo > 0}
+        # On branching maps, straights never join end to end (no long corridors).
+        straights = [] if linear else [t.room_id for t in self.rooms if t.straight]
+        self.no_connect = {(a, b) for a in straights for b in straights}
 
     # ── state ──
     def _reset(self) -> None:
         self.steps = 0
+        # Branching maps: IN at a random spot on the edge, OUT mirrored through the centre.
+        # Linear maps need no spots: the path visits every room, so its ends are IN and OUT.
+        self.spots: Optional[set] = None
+        self.in_spot: Optional[Tuple[int, int, str]] = None
+        if not self.linear:
+            edge = [(x, y, e) for y in range(self.H) for x in range(self.W) for e, (dx, dy) in DIRS.items()
+                    if not (0 <= x + dx < self.W and 0 <= y + dy < self.H)]
+            x, y, e = self.in_spot = self.rng.choice(edge)
+            self.spots = {self.in_spot, (self.W - 1 - x, self.H - 1 - y, OPP[e])}
         self.room_at = [[-1] * self.W for _ in range(self.H)]
         self.open_at: List[List[FrozenSet[str]]] = [[frozenset()] * self.W for _ in range(self.H)]
         self.placements: List[Placement] = []
@@ -369,13 +355,13 @@ class Solver:
         return None
 
     def _place_required(self) -> bool:
-        """Put rooms needed by --min / 'min' limits at random spots before the main fill.
+        """Put the rooms the limits require (the large room...) at random spots before the main fill.
 
         Filling row by row and only then discovering that a required room (e.g. a
         2x2 boss room) no longer fits wastes most of the search, so they go first.
         """
-        for tag, lim in sorted(self.limits.items()):
-            while self.tag_used[tag] < lim.min:
+        for tag, (lo, _) in sorted(self.limits.items()):
+            while self.tag_used[tag] < lo:
                 spots = [(v, x, y)
                          for t in self.rooms if tag in t.tags and self._available(t)
                          for v in self.variants[t.room_id]
@@ -396,7 +382,7 @@ class Solver:
         if cap is not None and self.piece_used[t.piece] >= cap:
             return False
         for tag in self.max_tags[t.room_id]:
-            if self.tag_used[tag] >= self.limits[tag].max:
+            if self.tag_used[tag] >= self.limits[tag][1]:
                 return False
         return True
 
@@ -417,17 +403,17 @@ class Solver:
                     return math.inf
                 free += area * left
             else:
-                room = self.limits[tag].max - self.tag_used[tag]
+                room = self.limits[tag][1] - self.tag_used[tag]
                 capped.setdefault(tag, []).extend([area] * int(min(left, room)))
         for tag, areas in capped.items():
-            room = self.limits[tag].max - self.tag_used[tag]
+            room = self.limits[tag][1] - self.tag_used[tag]
             free += sum(sorted(areas, reverse=True)[:room])
         return free
 
     def _min_area_needed(self) -> float:
         need = 0.0
         for tag, area in self.min_tag_area.items():
-            missing = self.limits[tag].min - self.tag_used[tag]
+            missing = self.limits[tag][0] - self.tag_used[tag]
             if missing > 0:
                 need = max(need, missing * area)
         return need
@@ -448,6 +434,9 @@ class Solver:
             for i in range(v.w):
                 if self.room_at[y0 + j][x0 + i] >= 0:
                     return None
+        if self.in_spot and self.ts.rooms[v.room_id].size_class == "large" \
+                and x0 <= self.in_spot[0] < x0 + v.w and y0 <= self.in_spot[1] < y0 + v.h:
+            return None   # IN is never in the large room
         border = 0
         for j in range(v.h):
             for i in range(v.w):
@@ -457,6 +446,8 @@ class Solver:
                         continue  # inside the room
                     nx, ny = x0 + i + dx, y0 + j + dy
                     if not (0 <= nx < self.W and 0 <= ny < self.H):
+                        if self.spots is not None and ((x0 + i, y0 + j, e) in self.spots) != (e in tile_open):
+                            return None   # open exactly at IN and OUT, walls elsewhere
                         if e in tile_open:
                             border += 1
                         continue
@@ -510,7 +501,7 @@ class Solver:
         self.placements.pop()
 
     def _limits_met(self) -> bool:
-        return all(self.tag_used[tag] >= lim.min for tag, lim in self.limits.items())
+        return all(self.tag_used[tag] >= lo for tag, (lo, _) in self.limits.items())
 
     def _rec(self) -> bool:
         self.steps += 1
@@ -574,6 +565,10 @@ class Solver:
                     if not (0 <= x + dx < self.W and 0 <= y + dy < self.H):
                         ends.append((self.room_at[y][x], (x, y, e)))
         self.rng.shuffle(ends)
+        if self.in_spot:
+            ends.sort(key=lambda e: e[1] != self.in_spot)
+        else:   # linear: IN is the end outside the large room when there's a choice
+            ends.sort(key=lambda e: self.ts.rooms[self.placements[e[0]].variant.room_id].size_class == "large")
         start = ends[0][0] if ends else self.rng.randrange(len(self.placements))
         order = self._bfs(start)
         self._assign_art(order)
@@ -611,342 +606,57 @@ class Solver:
 
 
 # ─────────────────────────────────────────────
-# Item placement
+# Markers
 # ─────────────────────────────────────────────
-# Each tile is split into SUB x SUB squares, all floor. Walls are the room
-# edges; a connector is the middle square of a tile's edge.
-# Markers are placed by an ordered list of rules from a rules file (rules/*.json).
-# Which markers exist and where they go is data; this section is only the engine
-# that interprets it. Markers go on slots: the centre square of every other tile,
-# like a checkerboard. Rules choose which slot each marker gets; a fill type takes the rest.
+# Each tile is split into SUB x SUB squares; a marker sits on a tile's centre square.
+# Markers go on slots: every other tile, like a checkerboard. So no two markers are on
+# tiles that share an edge, a medium room always holds one and the large room two.
+# The players start at IN; the tile they enter has no marker and the pattern runs from
+# there. One slot in the large room is the goal; every other slot is a "?" found in play.
 
 SUB = 3
 Square = Tuple[int, int]          # (x, y) in squares, from the map's top-left
 Tile = Tuple[int, int]            # (x, y) in tiles, from the map's top-left
 
-PICKS = ("random", "spread")
-PREFERENCES = ("off_route", "dead_end", "junction", "big")   # built in; any other preference is a room tag
 
-
-@dataclass
+@dataclass(frozen=True)
 class MarkerType:
-    name: str
     color: Tuple[int, int, int]
-    size: str = "large"           # "large" | "small"
-    label: str = ""               # text drawn on the marker, e.g. "?"
-    objective: bool = False       # the main route runs through markers of this type
-    defaults: Dict[str, object] = field(default_factory=dict)   # rule fields its rules inherit
+    large: bool                   # drawn bigger than the "?"s
+    label: str = ""
 
 
-@dataclass
-class MarkerRule:
-    type: str
-    count: int
-    distance: Tuple[int, Optional[int]]   # rooms walked from `source`; None = no maximum
-    source: str                           # "start" or a marker type placed by an earlier rule
-    pick: str                             # "random" | "spread"
-    prefer: List[str]
-    spread_from: List[str]
-
-
-@dataclass
-class PlacementRules:
-    strategy: str
-    types: Dict[str, MarkerType]
-    rules: List[MarkerRule]
-    fill: Optional[str] = None    # marker type put on every slot the rules leave empty
-
-
-def _parse_colour(where: str, value) -> Tuple[int, int, int]:
-    if isinstance(value, str) and value.startswith("#") and len(value) == 7:
-        return tuple(int(value[i:i + 2], 16) for i in (1, 3, 5))
-    if isinstance(value, (list, tuple)) and len(value) == 3:
-        return tuple(int(v) for v in value)
-    raise SystemExit(f"{where}: colour must be \"#rrggbb\" or [r, g, b], got {value!r}.")
-
-
-RULE_FIELDS = ("count", "distance", "from", "pick", "prefer", "spread_from")
-
-
-# Marker types the engine itself draws, which a rules file must define.
-REQUIRED_TYPES = {"start": "the player start, drawn when the dungeon has no IN marker"}
-
-
-def load_rules(path: str, tags: FrozenSet[str] = frozenset()) -> PlacementRules:
-    """Read a rules file. `tags` are the tile set's room tags, which "prefer" may name.
-
-    Rule fields set on a marker type are defaults for that type's rules; a rule's own
-    value wins.
-    """
-    with open(path, encoding="utf-8") as f:
-        raw = json.load(f)
-    where = os.path.basename(path)
-    types: Dict[str, MarkerType] = {}
-    merged = {n: v for n, v in raw.get("marker_types", {}).items() if not n.startswith("_")}
-    for n, v in merged.items():
-        if "color" not in v:
-            raise SystemExit(f"{where}: marker type {n!r} needs a \"color\".")
-        size = v.get("size", "large")
-        if size not in ("large", "small"):
-            raise SystemExit(f"{where}: marker type {n!r} size must be \"large\" or \"small\".")
-        types[n] = MarkerType(n, _parse_colour(f"{where}: marker type {n!r}", v["color"]),
-                              size, str(v.get("label", "")), bool(v.get("objective", False)),
-                              {k: v[k] for k in RULE_FIELDS if k in v})
-
-    for n, why in REQUIRED_TYPES.items():
-        if n not in types:
-            raise SystemExit(f"{where}: needs a {n!r} marker type ({why}).")
-
-    rules: List[MarkerRule] = []
-    placed = {"start"}
-    for i, r in enumerate(raw.get("markers", [])):
-        here = f"{where}: marker rule {i + 1}"
-        t = r.get("type")
-        if t not in types:
-            raise SystemExit(f"{here}: unknown marker type {t!r}. Known: {', '.join(sorted(types))}.")
-        r = {**types[t].defaults, **r}
-        lo, hi = r.get("distance", [1, None])
-        source = r.get("from", "start")
-        if source not in placed:
-            raise SystemExit(f"{here}: \"from\" must be \"start\" or a type placed by an earlier rule, got {source!r}.")
-        pick = r.get("pick", "random")
-        if pick not in PICKS:
-            raise SystemExit(f"{here}: \"pick\" must be one of {', '.join(PICKS)}.")
-        prefer = list(r.get("prefer", []))
-        for p in prefer:
-            if p not in PREFERENCES and p not in tags:
-                raise SystemExit(f"{here}: unknown preference {p!r}: use {', '.join(PREFERENCES)} "
-                                 f"or a room tag ({', '.join(sorted(tags))}).")
-        rules.append(MarkerRule(t, int(r.get("count", 1)), (int(lo), None if hi is None else int(hi)),
-                                source, pick, prefer, list(r.get("spread_from", ["start", t]))))
-        placed.add(t)
-
-    fill = raw.get("fill")
-    if fill is not None and fill not in types:
-        raise SystemExit(f"{where}: \"fill\" must be a marker type, got {fill!r}.")
-    strategy = raw.get("strategy", "standard")
-    if strategy == "discovery":
-        raise SystemExit(f"{where}: the \"discovery\" strategy is now a rules file (--rules discovery); "
-                         f"use \"strategy\": \"standard\" with \"fill\" instead.")
-    if strategy not in PLACEMENT_STRATEGIES:
-        raise SystemExit(f"{where}: placement strategy must be one of {', '.join(PLACEMENT_STRATEGIES)}.")
-    return PlacementRules(strategy, types, rules, fill)
+MARKER_TYPES: Dict[str, MarkerType] = {
+    "goal":  MarkerType((40, 180, 80), True, "G"),
+    "?":     MarkerType((220, 140, 40), False, "?"),
+}
 
 
 @dataclass
 class Marker:
-    x: int
-    y: int
+    tile: Tile
     type: str
 
-
-@dataclass
-class Items:
-    start: Optional[Square] = None        # player start
-    draw_start: bool = False              # False when the IN marker already shows it
-    markers: List[Marker] = field(default_factory=list)
+    @property
+    def square(self) -> Square:
+        return self.tile[0] * SUB + SUB // 2, self.tile[1] * SUB + SUB // 2
 
 
-class RoomMap:
-    """The layout as squares, plus the room graph (which rooms connect through connectors)."""
+def place_markers(layout: Layout, ts: TileSet, rng: random.Random) -> List[Marker]:
+    room_of = lambda t: layout.room_at[t[1]][t[0]]
+    large = next((i for i, p in enumerate(layout.placements)
+                  if ts.rooms[p.variant.room_id].size_class == "large"), None)
+    x, y, _ = layout.border_openings[0]            # IN: its tile is off, the next ones are slots
+    parity = (x + y + 1) % 2
+    slots = [(x, y) for y in range(layout.height) for x in range(layout.width) if (x + y) % 2 == parity]
 
-    def __init__(self, layout: Layout, ts: TileSet):
-        self.layout = layout
-        self.tags = [ts.rooms[p.variant.room_id].tags for p in layout.placements]
-        self.W, self.H = layout.width * SUB, layout.height * SUB
-        self.open = [[frozenset()] * layout.width for _ in range(layout.height)]
-        for p in layout.placements:
-            for j in range(p.variant.h):
-                for i in range(p.variant.w):
-                    self.open[p.y + j][p.x + i] = p.variant.tile_open[j][i]
-        self.links: Dict[int, set] = {i: set() for i in range(len(layout.placements))}
-        for y in range(layout.height):
-            for x in range(layout.width):
-                a = layout.room_at[y][x]
-                for e in self.open[y][x]:
-                    dx, dy = DIRS[e]
-                    if 0 <= x + dx < layout.width and 0 <= y + dy < layout.height:
-                        b = layout.room_at[y + dy][x + dx]
-                        if a != b:
-                            self.links[a].add(b)
-        # Openings on the map edge count as a way out (so a linear map's exit room isn't a dead end).
-        self.exits = Counter(layout.room_at[y][x] for x, y, _ in layout.border_openings)
-
-    def tile_of(self, s: Square) -> Tuple[int, int]:
-        return s[0] // SUB, s[1] // SUB
-
-    def room(self, s: Square) -> int:
-        x, y = self.tile_of(s)
-        return self.layout.room_at[y][x]
-
-    def centre(self, x: int, y: int) -> Square:
-        return x * SUB + SUB // 2, y * SUB + SUB // 2
-
-    def entrance(self) -> Optional[Square]:
-        """The square just inside the first border opening (the IN marker), if any."""
-        if not self.layout.border_openings:
-            return None
-        x, y, e = self.layout.border_openings[0]
-        cx, cy = self.centre(x, y)
-        dx, dy = DIRS[e]
-        return cx + dx * (SUB // 2), cy + dy * (SUB // 2)
-
-    def area(self, r: int) -> int:
-        """Tiles the room covers."""
-        p = self.layout.placements[r]
-        return p.variant.w * p.variant.h
-
-    def degree(self, r: int) -> int:
-        return len(self.links[r]) + self.exits[r]
-
-    def room_dist(self, sources: List[int]) -> Dict[int, int]:
-        """Rooms walked through from the nearest source (a 2x2 room counts as one)."""
-        dist = {s: 0 for s in sources}
-        queue = deque(sources)
-        while queue:
-            r = queue.popleft()
-            for n in self.links[r]:
-                if n not in dist:
-                    dist[n] = dist[r] + 1
-                    queue.append(n)
-        return dist
-
-    def route(self, start: int, targets: List[int]) -> set:
-        """Rooms on the shortest paths from start to each target."""
-        parent = {start: start}
-        queue = deque([start])
-        while queue:
-            r = queue.popleft()
-            for n in sorted(self.links[r]):
-                if n not in parent:
-                    parent[n] = r
-                    queue.append(n)
-        on = {start}
-        for r in targets:
-            while r in parent and r not in on:
-                on.add(r)
-                r = parent[r]
-        return on
-
-    def room_of(self, t: Tile) -> int:
-        return self.layout.room_at[t[1]][t[0]]
-
-
-def _choose_parity(sm: RoomMap, rng: random.Random) -> int:
-    """Pick the checkerboard colour: slots are the tiles with (x + y) % 2 == parity.
-
-    Slots are every other tile, so no two markers share an edge, every big room has
-    one and every branch two or more tiles long has one. Of the two colourings, the
-    one reaching more dead ends wins (a lone dead end on the other colour gets
-    nothing), then the one with more slots, then either. With an entrance, its tile
-    sets the colour instead, so the start is on the pattern like any other marker.
-    """
-    if sm.layout.border_openings:
-        x, y, _ = sm.layout.border_openings[0]
-        return (x + y) % 2
-    best = None
-    for parity in rng.sample((0, 1), 2):
-        tiles = [(x, y) for y in range(sm.layout.height) for x in range(sm.layout.width)
-                 if (x + y) % 2 == parity]
-        rooms = {sm.room_of(t) for t in tiles}
-        score = (sum(1 for r in rooms if sm.degree(r) == 1), len(tiles))
-        if best is None or score > best[0]:
-            best = (score, parity)
-    return best[1]
-
-
-def _place_start(sm: RoomMap, rng: random.Random, parity: int) -> Items:
-    """At the IN marker if there is one; else the centre of a random 1x1 room on the
-    checkerboard, so the start follows the same pattern as the markers
-    (dungeon-generator kept the player out of the big room)."""
-    start = sm.entrance()
-    if start is not None:
-        return Items(start=start)
-    rooms = [i for i, p in enumerate(sm.layout.placements) if p.variant.w * p.variant.h == 1] \
-        or list(range(len(sm.layout.placements)))
-    on = [r for r in rooms if (sm.layout.placements[r].x + sm.layout.placements[r].y) % 2 == parity]
-    p = sm.layout.placements[rng.choice(on or rooms)]
-    return Items(start=sm.centre(p.x, p.y), draw_start=True)
-
-
-def _split_tiles(sm: RoomMap, parity: int, start_room: int) -> Tuple[List[Tile], List[Tile]]:
-    """The tiles outside the start room: slots (on the checkerboard) and spares (the rest)."""
-    tiles = [(x, y) for y in range(sm.layout.height) for x in range(sm.layout.width)
-             if sm.room_of((x, y)) != start_room]
-    return [t for t in tiles if (t[0] + t[1]) % 2 == parity], \
-           [t for t in tiles if (t[0] + t[1]) % 2 != parity]
-
-
-def _pick_tile(sm: RoomMap, rng: random.Random, rules: PlacementRules, rule: MarkerRule,
-               items: Items, start_room: int, free: List[Tile]) -> Tile:
-    """Choose one of the free tiles for a marker. Each step narrows the choice but never
-    empties it. Distances and preferences are about the tile's room."""
-    rooms_of = lambda kind: [start_room] if kind == "start" else \
-        [sm.room((m.x, m.y)) for m in items.markers if m.type == kind]
-    room = sm.room_of
-
-    taken = set(rooms_of(rule.type))                              # one marker of each type per room
-    pool = [t for t in free if room(t) not in taken] or list(free)
-    marked = Counter(sm.room((m.x, m.y)) for m in items.markers)
-
-    # Distance from the source, or as close to the range as the map allows.
-    dist = sm.room_dist(rooms_of(rule.source) or [start_room])
-    lo, hi = rule.distance
-    gap = lambda t: max(lo - dist.get(room(t), math.inf), 0,
-                        0 if hi is None else dist.get(room(t), math.inf) - hi)
-    best = min(gap(t) for t in pool)
-    pool = [t for t in pool if gap(t) == best]
-
-    for pref in rule.prefer:
-        if pref == "off_route":
-            targets = [r for kind, mt in rules.types.items() if mt.objective for r in rooms_of(kind)]
-            targets += [sm.layout.room_at[y][x] for x, y, _ in sm.layout.border_openings[1:]]
-            route = sm.route(start_room, targets)
-            narrowed = [t for t in pool if room(t) not in route]
-        elif pref == "dead_end":
-            narrowed = [t for t in pool if sm.degree(room(t)) == 1]
-        elif pref == "junction":
-            narrowed = [t for t in pool if sm.degree(room(t)) >= 3]
-        elif pref == "big":
-            narrowed = [t for t in pool if sm.area(room(t)) > 1]
-        else:  # a room tag; tagged rooms with no marker yet come first, to spread markers over the rooms
-            narrowed = [t for t in pool if pref in sm.tags[room(t)]]
-            narrowed = [t for t in narrowed if not marked[room(t)]] or narrowed
-        pool = narrowed or pool
-
-    if rule.pick == "spread":
-        anchors = [r for kind in rule.spread_from for r in rooms_of(kind)]
-        if anchors:
-            ad = sm.room_dist(anchors)
-            far = max(ad.get(room(t), math.inf) for t in pool)
-            pool = [t for t in pool if ad.get(room(t), math.inf) == far]
-    return rng.choice(pool)
-
-
-def place_items_standard(sm: RoomMap, rng: random.Random, rules: PlacementRules) -> Items:
-    """Start, then the rules in order, each marker on a free slot (the centre of a
-    checkerboard tile), then the rules' fill type on every slot left."""
-    parity = _choose_parity(sm, rng)
-    items = _place_start(sm, rng, parity)
-    start_room = sm.room(items.start)
-    slots, spares = _split_tiles(sm, parity, start_room)
-    for rule in rules.rules:
-        for _ in range(rule.count):
-            free = slots or spares        # the other tiles only once the slots run out (tiny maps)
-            if not free:
-                break
-            t = _pick_tile(sm, rng, rules, rule, items, start_room, free)
-            free.remove(t)
-            items.markers.append(Marker(*sm.centre(*t), rule.type))
-    if rules.fill:
-        items.markers += [Marker(*sm.centre(*t), rules.fill) for t in slots]
-    return items
-
-
-PLACEMENT_STRATEGIES = {
-    "standard":  place_items_standard,
-    "none":      lambda sm, rng, rules: Items(),
-}
+    markers: List[Marker] = []
+    goal = [t for t in slots if room_of(t) == large]
+    if goal:
+        markers.append(Marker(rng.choice(goal), "goal"))
+    taken = {m.tile for m in markers}
+    markers += [Marker(t, "?") for t in slots if t not in taken]
+    return markers
 
 
 # ─────────────────────────────────────────────
@@ -984,8 +694,7 @@ def _schematic(room: RoomDef, tile_px: int) -> Image.Image:
 
 
 def render_png(layout: Layout, ts: TileSet, out_path: str, tile_px: int, caption: str,
-               number_rooms: bool = False, items: Optional[Items] = None,
-               marker_types: Optional[Dict[str, MarkerType]] = None) -> List[str]:
+               number_rooms: bool = False, markers: Optional[List[Marker]] = None) -> List[str]:
     """Render the layout. Returns the labels of rooms drawn as schematics (image missing)."""
     margin = max(24, tile_px // 3)
     font_px = max(12, round(tile_px * 0.09))
@@ -1028,8 +737,8 @@ def render_png(layout: Layout, ts: TileSet, out_path: str, tile_px: int, caption
                             radius=pad, fill=(15, 15, 15), outline=(230, 200, 90), width=2)
         d.text((bx + pad, by + pad + font_px / 2), label, fill=(240, 240, 240), font=font, anchor="lm")
 
-    # Item markers, centred on their square.
-    if items:
+    # Markers, centred on their square.
+    if markers:
         sp = tile_px / SUB
 
         def dot(s: Square, colour, r: float, text: str = "") -> None:
@@ -1039,11 +748,9 @@ def render_png(layout: Layout, ts: TileSet, out_path: str, tile_px: int, caption
             if text:
                 d.text((cx, cy), text, fill=(255, 255, 255), font=_font(max(10, round(r * 1.3))), anchor="mm")
 
-        types = marker_types or {}
-        drawn = ([Marker(*items.start, "start")] if items.start and items.draw_start else []) + items.markers
-        for m in drawn:
-            mt = types[m.type]
-            dot((m.x, m.y), mt.color, sp / 3 if mt.size == "large" else sp / 4, mt.label)
+        for m in markers:
+            mt = MARKER_TYPES[m.type]
+            dot(m.square, mt.color, sp / 3 if mt.large else sp / 4, mt.label)
 
     # Border openings in the margin: the first is the entrance, the rest are exits.
     for n, (x, y, e) in enumerate(layout.border_openings):
@@ -1083,21 +790,20 @@ def room_counts(layout: Layout) -> str:
 # Orchestration
 # ─────────────────────────────────────────────
 
-def _parse_tag_values(items: List[str], flag: str) -> Dict[str, int]:
-    out = {}
-    for item in items:
-        if "=" not in item:
-            raise SystemExit(f"{flag} expects TAG=N, got {item!r}.")
-        tag, n = item.split("=", 1)
-        out[tag.strip()] = int(n)
-    return out
-
-
-def check_area(ts: TileSet, width: int, height: int) -> None:
-    """Fail early with a clear message when the grid obviously can't be filled."""
+def check_rooms(ts: TileSet, width: int, height: int, linear: bool) -> None:
+    """Fail early with a clear message when the tile set obviously can't make the map."""
+    rooms = ts.usable(linear)
+    kind = "linear" if linear else "branching"
+    for size, (lo, _) in LIMITS.items():
+        if lo and not any(r.size_class == size for r in rooms):
+            raise SystemExit(f"{ts.name} has no {size} room usable on a {kind} map "
+                             f"({'exactly two' if linear else 'two or more'} openings).")
+    if not linear and not any(len(r.openings) >= 3 for r in rooms):
+        raise SystemExit(f"{ts.name} has no room with three or more openings, so it can't branch. "
+                         f"Use --linear.")
     capacity = 0.0
     for piece, cap in ts.piece_copies.items():
-        faces = [t for t in ts.rooms.values() if t.piece == piece and t.weight > 0]
+        faces = [t for t in rooms if t.piece == piece]
         if not faces:
             continue
         if cap is None:
@@ -1105,85 +811,56 @@ def check_area(ts: TileSet, width: int, height: int) -> None:
         capacity += cap * max(t.area for t in faces)
     if capacity < width * height:
         raise SystemExit(f"Can't fill {width}x{height} ({width * height} tiles): "
-                         f"all of {ts.name}'s rooms together cover only {int(capacity)}.")
+                         f"all of {ts.name}'s usable rooms together cover only {int(capacity)}.")
 
 
-def generate(seed: int, ts: TileSet, width: int, height: int,
-             border: Tuple[int, int], limits: Dict[str, Limit]) -> Optional[Layout]:
-    """Deterministic for a given seed, tile set and options."""
-    rng = random.Random(seed)
-    return Solver(ts, width, height, border, limits, rng).solve()
+def generate(seed: int, ts: TileSet, width: int, height: int, linear: bool) -> Optional[Layout]:
+    """Deterministic for a given seed, tile set, size and kind of map."""
+    return Solver(ts, width, height, linear, random.Random(seed)).solve()
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Generate gap-free dungeons from a tile set described in JSON.")
     ap.add_argument("--tileset",  required=True,
-                    help="Tile set: a name from tilesets/ (e.g. gow) or a path to a JSON file.")
-    ap.add_argument("--width",    type=int, default=None, help="Dungeon width in tiles (default: from the tile set, else 5).")
-    ap.add_argument("--height",   type=int, default=None, help="Dungeon height in tiles (default: from the tile set, else 4).")
-    ap.add_argument("--border-openings", default=None,
-                    help="Openings allowed to face the map edge: N or MIN-MAX (default: from the tile set, else 0).")
-    ap.add_argument("--min",      action="append", default=[], metavar="TAG=N",
-                    help="Use at least N rooms with this tag or room id. Repeatable; overrides the tile set.")
-    ap.add_argument("--max",      action="append", default=[], metavar="TAG=N",
-                    help="Use at most N rooms with this tag or room id. Repeatable; overrides the tile set.")
-    ap.add_argument("--number-rooms", action=argparse.BooleanOptionalAction, default=None,
-                    help="Prefix each room's badge with its order from the entrance. Only meaningful when "
-                         "the dungeon is a single path (default: from the tile set, else off).")
-    ap.add_argument("--rules",    default=None,
-                    help="Game rules: a name from rules/ (e.g. linear) or a path to a JSON file "
-                         "(default: the tile set's \"rules\", else default).")
-    ap.add_argument("--placement", choices=PLACEMENT_STRATEGIES, default=None,
-                    help="Item placement strategy (default: from the rules file).")
+                    help="Tile set: a name from tilesets/ (e.g. city) or a path to a JSON file.")
+    ap.add_argument("--linear",   action="store_true",
+                    help="A single path from IN to OUT, using only rooms with two openings "
+                         "(default: a branching map, with IN and OUT on opposite edges).")
+    ap.add_argument("--width",    type=int, default=5, help="Dungeon width in tiles (default: 5).")
+    ap.add_argument("--height",   type=int, default=4, help="Dungeon height in tiles (default: 4).")
+    ap.add_argument("--number-rooms", action="store_true",
+                    help="Prefix each room's badge with its order from the entrance. Only meaningful "
+                         "on linear maps.")
+    ap.add_argument("--no-markers", action="store_true", help="Leave out the goal and '?' markers.")
     ap.add_argument("--n",        type=int, default=3,    help="Number of dungeons to generate (default: 3).")
     ap.add_argument("--seed",     type=int, default=None, help="Generate one specific dungeon by seed.")
-    ap.add_argument("--tile-px", "--cell-px", type=int, default=300, dest="tile_px",
-                    help="Pixels per tile in the PNG (default: 300). --cell-px is the old name.")
+    ap.add_argument("--tile-px", type=int, default=300, help="Pixels per tile in the PNG (default: 300).")
     ap.add_argument("--out-dir",  default=None,
                     help="Where to write the PNGs (default: output/<tileset>/ in this folder).")
     args = ap.parse_args()
 
     ts = load_tileset(resolve_tileset_path(args.tileset))
-    rules_path = resolve_rules_path(args.rules) if args.rules else resolve_rules_path(ts.rules, ts.path)
-    rules = load_rules(rules_path, frozenset().union(*(t.tags for t in ts.rooms.values())))
-    strategy = args.placement or rules.strategy
-    rules_name = os.path.splitext(os.path.basename(rules_path))[0]
-    width = args.width or ts.width
-    height = args.height or ts.height
-    border = parse_border(args.border_openings) if args.border_openings is not None else ts.border
-
-    limits = {tag: Limit(l.min, l.max) for tag, l in ts.limits.items()}
-    for tag, n in _parse_tag_values(args.min, "--min").items():
-        limits.setdefault(tag, Limit()).min = n
-    for tag, n in _parse_tag_values(args.max, "--max").items():
-        lim = limits.setdefault(tag, Limit())
-        lim.max = n
-        lim.min = min(lim.min, n)
-    known_tags = set().union(*(t.tags for t in ts.rooms.values()))
-    for tag in limits:
-        if tag not in known_tags:
-            raise SystemExit(f"No room in {ts.name} has the tag or id {tag!r}.")
-
-    check_area(ts, width, height)
+    width, height, linear = args.width, args.height, args.linear
+    check_rooms(ts, width, height, linear)
     slug = "".join(c if c.isalnum() else "_" for c in os.path.splitext(os.path.basename(ts.path))[0]).lower()
     out_dir = args.out_dir or os.path.join(DEFAULT_OUT_DIR, slug)
     os.makedirs(out_dir, exist_ok=True)
+    kind = "linear" if linear else "branching"
 
     seeds = [args.seed] if args.seed is not None else [random.randint(0, 2**32 - 1) for _ in range(args.n)]
     warned: set = set()
     for seed in seeds:
-        layout = generate(seed, ts, width, height, border, limits)
+        layout = generate(seed, ts, width, height, linear)
         if layout is None:
             print(f"Seed {seed}: no layout found, skipping. "
-                  f"If this keeps happening, the rooms may not be able to fill {width}x{height} with these settings.")
+                  f"If this keeps happening, the rooms may not be able to fill {width}x{height}.")
             continue
-        caption = (f"{ts.name}  ·  Rules {rules_name}  ·  Seed {seed}  ·  "
+        caption = (f"{ts.name}  ·  {kind.capitalize()}  ·  Seed {seed}  ·  "
                    f"{len(layout.placements)} rooms  ·  {room_counts(layout)}")
-        base = os.path.join(out_dir, f"{slug}_dungeon_{seed}")
-        number_rooms = ts.number_rooms if args.number_rooms is None else args.number_rooms
-        # Own random stream, so changing item placement never changes the layout for a seed.
-        items = PLACEMENT_STRATEGIES[strategy](RoomMap(layout, ts), random.Random(f"{seed}:items"), rules)
-        missing = render_png(layout, ts, base + ".png", args.tile_px, caption, number_rooms, items, rules.types)
+        base = os.path.join(out_dir, f"{slug}_{kind}_dungeon_{seed}")
+        # Own random stream, so marker placement never changes the layout for a seed.
+        markers = None if args.no_markers else place_markers(layout, ts, random.Random(f"{seed}:items"))
+        missing = render_png(layout, ts, base + ".png", args.tile_px, caption, args.number_rooms, markers)
         print(f"Saved: {base}.png")
         new = [m for m in missing if m not in warned]
         if new:

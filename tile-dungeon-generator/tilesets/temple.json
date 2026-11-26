@@ -3,9 +3,10 @@
     "Rooms with centred connectors. Three sizes, in tiles: small (1x1), medium (1x2) and large (2x2).",
     "Small: D (dead end, one opening, north; never used), I (straight), L (corner), T (east, south and west) and X (all four sides).",
     "Medium: I, L (north + east on the bottom tile), J (mirror of L), S (east on the top tile, west on the bottom) and Z (mirror of S).",
-    "Large: L (north on the top-left tile, east on the bottom-right), S (north on the top-left, south on the bottom-right) and Z (mirror of S).",
+    "Large: L (north on the top-left tile, east on the bottom-right), S (east on the top-right tile, west on the bottom-left) and Z (west on the top-left, east on the bottom-right).",
     "Each room is one shape; its 'images' are art variations, spread evenly over the rooms placed.",
-    "No 'copies', so each room can be used any number of times. Linear maps (--linear) use the two-opening rooms."
+    "No 'copies', so each room can be used any number of times. Linear maps (--linear) use the two-opening rooms.",
+    "Textures Source: ambientCG.com"
   ],
   "name": "Temple",
   "image_dir": "Temple",
@@ -21,7 +22,7 @@
     "MD_S": {"size": [1, 2], "openings": [[0, 0, "E"], [0, 1, "W"]], "images": ["MD_S_01.png"]},
     "MD_Z": {"size": [1, 2], "openings": [[0, 0, "W"], [0, 1, "E"]], "images": ["MD_Z_01.png"]},
     "LG_L": {"size": [2, 2], "openings": [[0, 0, "N"], [1, 1, "E"]], "images": ["LG_L_01.png", "LG_L_02.png"]},
-    "LG_S": {"size": [2, 2], "openings": [[0, 0, "N"], [1, 1, "S"]], "images": ["LG_S_01.png"]},
-    "LG_Z": {"size": [2, 2], "openings": [[1, 0, "N"], [0, 1, "S"]], "images": ["LG_Z_01.png"]}
+    "LG_S": {"size": [2, 2], "openings": [[1, 0, "E"], [0, 1, "W"]], "images": ["LG_S_01.png"]},
+    "LG_Z": {"size": [2, 2], "openings": [[0, 0, "W"], [1, 1, "E"]], "images": ["LG_Z_01.png"]}
   }
 }
